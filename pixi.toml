@@ -1,0 +1,40 @@
+[workspace]
+name = "pointcloudlib"
+version = "0.1.0"
+description = "Point cloud download library with PDAL-backed processing"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+python = "3.11.*"
+pdal = "*"
+geopandas = "*"
+shapely = "*"
+requests = "*"
+pyproj = "*"
+proj = "*"
+proj-data = "*"
+pip = "*"
+
+[pypi-dependencies]
+tkintermapview = "==1.29"
+
+[feature.dev.dependencies]
+pytest = ">=8,<9"
+ruff = ">=0.6,<1"
+
+[feature.dev.pypi-dependencies]
+build = ">=1.2.2,<2"
+twine = ">=5.1.1,<6"
+
+[environments]
+default = []
+dev = ["dev"]
+
+[tasks]
+test = "pytest"
+lint = "ruff check ."
+build-dist = "python -m build"
+check-dist = "python -m twine check dist/*"
+publish-testpypi = "python -m twine upload --repository testpypi dist/*"
+publish-pypi = "python -m twine upload dist/*"

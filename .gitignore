@@ -1,0 +1,19 @@
+.vscode/
+data/
+__pycache__/
+*.py[cod]
+*.so
+
+# Packaging artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and type checker caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Pixi environment
+.pixi/
+pixi.lock

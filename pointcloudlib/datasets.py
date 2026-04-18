@@ -3,7 +3,7 @@ import re
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import geopandas as gpd
 import requests
@@ -35,7 +35,7 @@ class IGNLidarHD(PointCloudProvider):
         urls = list(dict.fromkeys(index_gdf["url"].dropna().tolist()))
         return [self._rewrite_to_ovh(url) for url in urls if self._rewrite_to_ovh(url)]
 
-    def _rewrite_to_ovh(self, url: str) -> Optional[str]:
+    def _rewrite_to_ovh(self, url: str) -> str | None:
         OVH_BASE_URL = "https://storage.sbg.cloud.ovh.net/v1/AUTH_63234f509d6048bca3c9fd7928720ca1/ppk-lidar/"
         orig_filename = url.split("/")[-1]
         match = re.search(r"LAMB93_([A-Z]{2})_", url)

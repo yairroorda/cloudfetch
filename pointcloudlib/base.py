@@ -2,7 +2,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -21,7 +21,7 @@ class PointCloudProvider(ABC):
     crs: str
     file_type: str
 
-    def __init__(self, data_dir: Optional[Path | str] = None):
+    def __init__(self, data_dir: Path | str | None = None):
         self.data_dir = Path(data_dir) if data_dir else Path.cwd() / "data"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -70,7 +70,7 @@ class PointCloudProvider(ABC):
         return output_path
 
     @timed("Pointcloud query")
-    def fetch(self, aoi: Polygon, output_path: Optional[Path | str] = None, aoi_crs: str = "EPSG:28992") -> Optional[Path]:
+    def fetch(self, aoi: Polygon, output_path: Path | str | None = None, aoi_crs: str = "EPSG:28992") -> Path | None:
         if output_path is None:
             output_path = self.data_dir / f"{self.name}_output.copc.laz"
         else:
@@ -103,7 +103,7 @@ class ProviderChain(PointCloudProvider):
     crs = "Multiple"
     file_type = "Mixed"
 
-    def __init__(self, providers: List[PointCloudProvider], data_dir: Optional[Path | str] = None):
+    def __init__(self, providers: List[PointCloudProvider], data_dir: Path | str | None = None):
         super().__init__(data_dir=data_dir)
         self.providers = providers
 
@@ -111,7 +111,7 @@ class ProviderChain(PointCloudProvider):
         # A chain doesn't have a single index, so we can raise a NotImplementedError.
         raise NotImplementedError("Call fetch() directly on a ProviderChain.")
 
-    def fetch(self, aoi: Polygon, output_path: Optional[Path | str] = None, aoi_crs: str = "EPSG:28992") -> Optional[Path]:
+    def fetch(self, aoi: Polygon, output_path: Path | str | None = None, aoi_crs: str = "EPSG:28992") -> Path | None:
         target_path = Path(output_path) if output_path is not None else None
         target_dir = target_path.parent if target_path is not None else self.data_dir
         failures: list[str] = []

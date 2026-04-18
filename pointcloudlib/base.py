@@ -7,6 +7,7 @@ from typing import List, Optional
 import geopandas as gpd
 from shapely.geometry import Polygon
 
+from .exceptions import PDALExecutionError, ProviderFetchError
 from .utils import status_spinner, timed
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class PointCloudProvider(ABC):
         try:
             import pdal  # type: ignore
         except ImportError as exc:
-            raise RuntimeError("PDAL Python bindings are required to fetch point clouds. Install PDAL via the project's pixi environment.") from exc
+            raise PDALExecutionError(self.name, "PDAL Python bindings are required. Install PDAL via the project's pixi environment.") from exc
 
         reader_type = "readers.copc" if self.file_type == "COPC" else "readers.las"
         stages = []
@@ -59,8 +60,11 @@ class PointCloudProvider(ABC):
             {"type": "writers.copc", "filename": str(output_path), "forward": "all", "offset_x": "auto", "offset_y": "auto", "offset_z": "auto"},
         ]
 
-        with status_spinner(f"Processing {self.name} with PDAL ..."):
-            count = pdal.Pipeline(json.dumps(pipeline)).execute()
+        try:
+            with status_spinner(f"Processing {self.name} with PDAL ..."):
+                count = pdal.Pipeline(json.dumps(pipeline)).execute()
+        except Exception as exc:
+            raise PDALExecutionError(self.name, f"PDAL pipeline execution failed: {exc}") from exc
 
         logger.info(f"[{self.name}] Processed {count} points from {len(tile_urls)} tiles into {output_path.name}")
         return output_path
@@ -73,18 +77,19 @@ class PointCloudProvider(ABC):
             output_path = Path(output_path)
 
         gdf_aoi = gpd.GeoDataFrame(geometry=[aoi], crs=aoi_crs).to_crs(self.crs)
+        tile_urls = self.get_index(gdf_aoi)
+
+        if not tile_urls:
+            logger.warning(f"[{self.name}] No intersecting tiles found.")
+            return None
+
+        logger.info(f"[{self.name}] Found {len(tile_urls)} tiles. Downloading...")
         try:
-            tile_urls = self.get_index(gdf_aoi)
-            if tile_urls:
-                logger.info(f"[{self.name}] Found {len(tile_urls)} tiles. Downloading...")
-                return self._execute_pdal(tile_urls, gdf_aoi.geometry.iloc[0], output_path)
-            else:
-                logger.warning(f"[{self.name}] No intersecting tiles found.")
-        except Exception as exc:
-            logger.warning(f"[{self.name}] failed: {exc}")
+            return self._execute_pdal(tile_urls, gdf_aoi.geometry.iloc[0], output_path)
+        except Exception:
             if output_path.exists():
                 output_path.unlink()
-        return None
+            raise
 
 
 class ProviderChain(PointCloudProvider):
@@ -109,13 +114,22 @@ class ProviderChain(PointCloudProvider):
     def fetch(self, aoi: Polygon, output_path: Optional[Path | str] = None, aoi_crs: str = "EPSG:28992") -> Optional[Path]:
         target_path = Path(output_path) if output_path is not None else None
         target_dir = target_path.parent if target_path is not None else self.data_dir
+        failures: list[str] = []
 
         for provider in self.providers:
             # Sync the child provider's data directory with the chain's target
             provider.data_dir = target_dir
 
-            result = provider.fetch(aoi=aoi, output_path=target_path, aoi_crs=aoi_crs)
+            try:
+                result = provider.fetch(aoi=aoi, output_path=target_path, aoi_crs=aoi_crs)
+            except Exception as exc:
+                failures.append(str(exc))
+                continue
+
             if result and result.exists():
                 return result
+
+        if failures:
+            raise ProviderFetchError(self.name, "All providers failed: " + " | ".join(failures))
 
         return None

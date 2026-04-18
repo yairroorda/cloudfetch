@@ -9,6 +9,8 @@ import geopandas as gpd
 import requests
 
 from .base import PointCloudProvider
+from .exceptions import ProviderFetchError
+from .utils import download_file
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -177,39 +179,32 @@ class CanElevation(PointCloudProvider):
     index_url = "https://canelevation-lidar-point-clouds.s3-ca-central-1.amazonaws.com/pointclouds_nuagespoints/Index_LiDARtiles_tuileslidar.gpkg"
 
     def _download_index(self) -> Path:
-        """Downloads the master tile index (~300MB)."""
+        """Downloads the master tile index."""
         local_path = self.data_dir / "nrcan_tile_index.gpkg"
+
         if not local_path.exists():
             logger.info(f"[{self.name}] Downloading master TILE index...")
-            urllib.request.urlretrieve(self.index_url, local_path)
+            download_file(self.index_url, local_path)
+
         return local_path
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
-        try:
-            index_path = self._download_index()
+        index_path = self._download_index()
+        aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
 
-            # The master index is NAD83(CSRS) - EPSG:4617.
-            # We reproject the AOI just for the spatial join.
-            aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
+        logger.info(f"[{self.name}] Querying tile index for AOI...")
+        index_gdf = gpd.read_file(index_path, mask=aoi_for_join)
 
-            # Use 'mask' for high-performance spatial filtering
-            logger.info(f"[{self.name}] Querying tile index for AOI...")
-            index_gdf = gpd.read_file(index_path, mask=aoi_for_join)
-
-            if index_gdf.empty:
-                logger.warning(f"[{self.name}] No tiles found for this AOI.")
-                return []
-
-            # Ensure we get the most recent data (e.g., 2020 over 2014)
-            if "Year" in index_gdf.columns:
-                index_gdf = index_gdf.sort_values("Year", ascending=False)
-
-            # Extract URLs from the 'URL' column shown in your screenshot
-            url_col = "URL" if "URL" in index_gdf.columns else "url"
-            urls = index_gdf[url_col].dropna().unique().tolist()
-
-            return [u for u in urls if u.lower().endswith((".laz", ".copc"))]
-
-        except Exception as e:
-            logger.error(f"[{self.name}] Error: {e}")
+        if index_gdf.empty:
+            logger.warning(f"[{self.name}] No tiles found for this AOI.")
             return []
+
+        if "Year" in index_gdf.columns:
+            index_gdf = index_gdf.sort_values("Year", ascending=False)
+
+        url_col = "URL" if "URL" in index_gdf.columns else "url"
+        if url_col not in index_gdf.columns:
+            raise ProviderFetchError(self.name, "NRCan index missing URL column.")
+
+        urls = index_gdf[url_col].dropna().unique().tolist()
+        return [u for u in urls if u.lower().endswith((".laz", ".copc"))]

@@ -24,6 +24,8 @@ pytest = ">=8,<9"
 ruff = ">=0.6,<1"
 
 [feature.dev.pypi-dependencies]
+pointcloudlib = { path = ".", editable = true }
+responses = "*"
 build = ">=1.2.2,<2"
 twine = ">=5.1.1,<6"
 

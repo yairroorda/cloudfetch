@@ -129,6 +129,18 @@ def demo_AHN():
         logger.error("❌ Failed to retrieve data from any source in the chain.")
 
 
+def demo_resolution():
+    aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for resolution demo")
+    provider = AHN6(data_dir="./data")
+    for resolution in [None, 0.5, 1.0, 2.0]:
+        output_path = Path(f"./data/resolution_test_{resolution or 'full'}.copc.laz")
+        result_path = provider.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path=output_path, resolution=resolution)
+        if result_path:
+            logger.info(f"✅ Success with resolution={resolution}! Output at: {result_path}")
+        else:
+            logger.error(f"❌ Failed to fetch data with resolution={resolution}.")
+
+
 def demo_lidar_hd():
     aoi_wgs84 = AOIPolygon(
         ShapelyPolygon([(2.335270987781712, 48.862575335381095), (2.333844052585789, 48.86009786319193), (2.3366013634530987, 48.85942024260344), (2.339294301304051, 48.85932848077683), (2.3401311505166973, 48.86090958411185), (2.337888823780247, 48.861876573590436), (2.335270987781712, 48.862575335381095)]),
@@ -166,6 +178,7 @@ def main():
     # open_in_cloudcompare("./data/groningen_plein.copc.laz")
     demo_lidar_hd()
     demo_can_elevation()
+    demo_resolution()
 
 
 if __name__ == "__main__":

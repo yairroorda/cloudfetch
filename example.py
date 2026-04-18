@@ -5,8 +5,9 @@ from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import Polygon as ShapelyPolygon
 
-from src import AHN4, AHN5, AHN6, CanElevation, IGNLidarHD
-from src.utils import open_in_cloudcompare
+from pointcloudlib import AHN4, AHN5, AHN6, CanElevation, IGNLidarHD
+from pointcloudlib.base import ProviderChain
+from pointcloudlib.utils import open_in_cloudcompare
 
 # make sure data directory exists
 data_dir = Path("./data")
@@ -113,8 +114,10 @@ class AOIPolygon:
 def demo_AHN():
     # aoi_rdnew = AOIPolygon(ShapelyPolygon([(233691, 581987), (233875, 582056), (233921, 581956), (233758, 581894), (233691, 581987)]), crs="EPSG:28992")
     aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for AHN demo")
-    ahn = AHN6(data_dir="./data", fallback=[AHN5(), AHN4()])
-    result_path = ahn.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path="./data/groningen_plein.copc.laz")
+    ahn6 = AHN6(data_dir="./data")
+    ahn5 = AHN5(data_dir="./data")
+    ahn_chain = ProviderChain(providers=[ahn6, ahn5])
+    result_path = ahn_chain.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path="./data/groningen_plein.copc.laz")
 
     if result_path:
         print(f"\n✅ Success! Data successfully downloaded and processed at: {result_path}")
@@ -156,7 +159,7 @@ def demo_can_elevation():
 def main():
 
     demo_AHN()
-    open_in_cloudcompare("./data/groningen_plein.copc.laz")
+    # open_in_cloudcompare("./data/groningen_plein.copc.laz")
     # demo_lidar_hd()
     # demo_can_elevation()
 

@@ -85,17 +85,32 @@ class PointCloudProvider(ABC):
         return None
 
 
-class ProviderChain:
-    def __init__(self, providers: List[PointCloudProvider]):
+class ProviderChain(PointCloudProvider):
+    """
+    A composite provider that tries multiple providers in sequence
+    until one successfully fetches the data.
+    """
+
+    # Give the chain its own required class attributes
+    name = "ProviderChain"
+    crs = "Multiple"
+    file_type = "Mixed"
+
+    def __init__(self, providers: List[PointCloudProvider], data_dir: Optional[Path | str] = None):
+        super().__init__(data_dir=data_dir)
         self.providers = providers
+
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+        # A chain doesn't have a single index, so we can raise a NotImplementedError.
+        raise NotImplementedError("Call fetch() directly on a ProviderChain.")
 
     def fetch(self, aoi: Polygon, output_path: Optional[Path | str] = None, aoi_crs: str = "EPSG:28992") -> Optional[Path]:
         target_path = Path(output_path) if output_path is not None else None
-        target_dir = target_path.parent if target_path is not None else None
+        target_dir = target_path.parent if target_path is not None else self.data_dir
 
         for provider in self.providers:
-            if target_dir is not None:
-                provider.data_dir = target_dir
+            # Sync the child provider's data directory with the chain's target
+            provider.data_dir = target_dir
 
             result = provider.fetch(aoi=aoi, output_path=target_path, aoi_crs=aoi_crs)
             if result and result.exists():

@@ -133,7 +133,7 @@ def demo_AHN():
 def demo_resolution():
     aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for resolution demo")
     provider = AHN6(data_dir="./data")
-    for resolution in [None, 0.5, 1.0, 2.0]:
+    for resolution in ["full", 0.5, 1.0, 2.0]:
         output_path = Path(f"./data/resolution_test_{resolution or 'full'}.copc.laz")
         result_path = provider.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path=output_path, resolution=resolution)
         if result_path:

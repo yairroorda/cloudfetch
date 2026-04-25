@@ -7,13 +7,12 @@ name = "pointcloudlib"
 version = "0.1.0"
 description = "A library for downloading arbitrary polygons of large remote point cloud datasets."
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
 authors = [{name = "Yair Roorda", email = "yairroorda@gmail.com"}]
 requires-python = ">=3.10"
 
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering :: GIS",
 ]

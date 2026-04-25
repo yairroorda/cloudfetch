@@ -27,7 +27,7 @@ ruff = ">=0.6,<1"
 pointcloudlib = { path = ".", editable = true }
 responses = "*"
 build = ">=1.2.2,<2"
-twine = ">=5.1.1,<6"
+twine = ">=6.0.0"
 
 [environments]
 default = []

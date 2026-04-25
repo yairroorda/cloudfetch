@@ -1,6 +1,6 @@
-# pointcloudlib
+# cloudfetch
 
-Tired of endlessly clicking through portals to download LiDAR data? Is your area of interest always on intersection of 4 neighbouring tiles? **pointcloudlib** is a library for downloading arbitrary polygons of large remote point cloud datasets. Designed for ease of use and automated processing, it leverages PDAL (Point Data Abstraction Library) and COPC under the hood to crop, merge, and filter point cloud tiles seamlessly.
+Tired of endlessly clicking through portals to download LiDAR data? Is your area of interest always on intersection of 4 neighbouring tiles? **cloudfetch** is a library for downloading arbitrary polygons of large remote point cloud datasets. Designed for ease of use and automated processing, it leverages PDAL (Point Data Abstraction Library) and COPC under the hood to crop, merge, and filter point cloud tiles seamlessly.
 
 ## Features
 
@@ -13,7 +13,7 @@ Tired of endlessly clicking through portals to download LiDAR data? Is your area
 
 ## Installation
 
-**pointcloudlib** requires Python 3.10 or higher. 
+**cloudfetch** requires Python 3.10 or higher. 
 
 Because this library relies heavily on **PDAL** for its C++ point cloud processing capabilities, you must install the underlying PDAL binaries on your system *before* installing this package. Standard `pip` cannot build these C++ dependencies reliably.
 
@@ -32,11 +32,11 @@ pixi add pdal python-pdal
 
 *(Note: Advanced users can also install PDAL via system package managers like `brew install pdal` or `apt-get install pdal`, but Conda/Pixi is the safest route).*
 
-### Step 2: Install pointcloudlib
+### Step 2: Install cloudfetch
 Once PDAL is installed in your environment, you can safely install the library via PyPI:
 
 ```bash
-pip install pointcloudlib
+pip install cloudfetch
 ```
 
 
@@ -48,9 +48,9 @@ Below is a basic example demonstrating how to draw an AOI interactively, chain t
 import logging
 from pathlib import Path
 
-from pointcloudlib import AHN5, AHN6
-from pointcloudlib.base import ProviderChain
-from pointcloudlib.utils import AOIPolygon
+from cloudfetch import AHN5, AHN6
+from cloudfetch.base import ProviderChain
+from cloudfetch.utils import AOIPolygon
 
 # Set up logging to track the download and PDAL processing
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] | %(name)s | %(message)s")

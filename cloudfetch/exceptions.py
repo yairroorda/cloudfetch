@@ -1,8 +1,8 @@
-class PointCloudLibError(RuntimeError):
-    """Base exception for pointcloudlib errors."""
+class cloudfetchError(RuntimeError):
+    """Base exception for cloudfetch errors."""
 
 
-class ProviderFetchError(PointCloudLibError):
+class ProviderFetchError(cloudfetchError):
     """Raised when a provider fails to fetch data for an AOI."""
 
     def __init__(self, provider_name: str, message: str):
@@ -11,7 +11,7 @@ class ProviderFetchError(PointCloudLibError):
         super().__init__(f"[{provider_name}] {message}")
 
 
-class PDALExecutionError(PointCloudLibError):
+class PDALExecutionError(cloudfetchError):
     """Raised when PDAL execution fails for a provider."""
 
     def __init__(self, provider_name: str, message: str):

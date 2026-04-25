@@ -3,10 +3,8 @@ from pathlib import Path
 
 from shapely.geometry import Polygon as ShapelyPolygon  # type: ignore
 
-from pointcloudlib import AHN5, AHN6, CanElevation, IGNLidarHD
-from pointcloudlib.base import AOIPolygon, ProviderChain
-
-# from pointcloudlib.utils import open_in_cloudcompare
+from cloudfetch import AHN5, AHN6, CanElevation, IGNLidarHD
+from cloudfetch.base import AOIPolygon, ProviderChain
 
 # make sure data directory exists
 data_dir = Path("./data")

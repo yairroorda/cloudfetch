@@ -1,5 +1,5 @@
 [workspace]
-name = "pointcloudlib"
+name = "cloudfetch"
 version = "0.1.0"
 description = "Point cloud download library with PDAL-backed processing"
 channels = ["conda-forge"]
@@ -24,7 +24,7 @@ pytest = ">=8,<9"
 ruff = ">=0.6,<1"
 
 [feature.dev.pypi-dependencies]
-pointcloudlib = { path = ".", editable = true }
+cloudfetch = { path = ".", editable = true }
 responses = "*"
 build = ">=1.2.2,<2"
 twine = ">=6.0.0"

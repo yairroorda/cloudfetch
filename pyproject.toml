@@ -25,5 +25,10 @@ dependencies = [
     "tkintermapview==1.29"
 ]
 
+[project.urls]
+Homepage = "https://github.com/yairroorda/pointcloudlib"
+Repository = "https://github.com/yairroorda/pointcloudlib.git"
+Issues = "https://github.com/yairroorda/pointcloudlib/issues"
+
 [tool.setuptools]
 packages = ["pointcloudlib"]

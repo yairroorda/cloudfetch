@@ -46,11 +46,9 @@ Below is a basic example demonstrating how to draw an AOI interactively, chain t
 
 ```python
 import logging
-from pathlib import Path
 
 from cloudfetch import AHN5, AHN6
-from cloudfetch.base import ProviderChain
-from cloudfetch.utils import AOIPolygon
+from cloudfetch.base import ProviderChain, AOIPolygon
 
 # Set up logging to track the download and PDAL processing
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] | %(name)s | %(message)s")

@@ -20,7 +20,7 @@ pip = "*"
 tkintermapview = "==1.29"
 
 [feature.dev.dependencies]
-pytest = ">=8,<9"
+pytest = ">=9.0.3,<10"
 ruff = ">=0.6,<1"
 
 [feature.dev.pypi-dependencies]

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Literal
 
 import geopandas as gpd
-from shapely.geometry import Polygon
 from shapely.geometry import Polygon as ShapelyPolygon
 
 from .exceptions import PDALExecutionError, ProviderFetchError
@@ -31,17 +30,18 @@ class PointCloudProvider(ABC):
 
     def __init__(self, data_dir: Path | str | None = None):
         self.data_dir = Path(data_dir) if data_dir else Path.cwd() / "data"
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.index_dir = self.data_dir / "indices"
+        self.index_dir.mkdir(parents=True, exist_ok=True)
 
     @abstractmethod
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> list[str]:
         """Returns a list of downloadable tile URLs."""
-        pass
+        ...
 
     def _execute_pdal(
         self,
         tile_urls: list[str],
-        aoi: Polygon,
+        aoi: ShapelyPolygon,
         output_path: Path,
         resolution: float | Literal["full"] = "full",
     ) -> Path:
@@ -51,7 +51,7 @@ class PointCloudProvider(ABC):
         ----------
         tile_urls : list[str]
             URLs or local paths to source point cloud tiles.
-        aoi : Polygon
+        aoi : ShapelyPolygon
             Area-of-interest polygon in the provider CRS.
         output_path : Path
             Destination path for the COPC output.
@@ -115,7 +115,7 @@ class PointCloudProvider(ABC):
     @timed("Pointcloud query")
     def fetch(
         self,
-        aoi: Polygon,
+        aoi: ShapelyPolygon,
         output_path: Path | str | None = None,
         aoi_crs: str = "EPSG:28992",
         resolution: float | Literal["full"] = "full",
@@ -124,7 +124,7 @@ class PointCloudProvider(ABC):
 
         Parameters
         ----------
-        aoi : Polygon
+        aoi : ShapelyPolygon
             Area-of-interest geometry to query.
         output_path : Path | str | None, default=None
             Optional output file path for the resulting COPC file.
@@ -182,7 +182,7 @@ class ProviderChain(PointCloudProvider):
 
     def fetch(
         self,
-        aoi: Polygon,
+        aoi: ShapelyPolygon,
         output_path: Path | str | None = None,
         aoi_crs: str = "EPSG:28992",
         resolution: float | Literal["full"] = "full",
@@ -191,7 +191,7 @@ class ProviderChain(PointCloudProvider):
 
         Parameters
         ----------
-        aoi : Polygon
+        aoi : ShapelyPolygon
             Area-of-interest geometry to query.
         output_path : Path | str | None, default=None
             Optional output file path for the resulting COPC file.

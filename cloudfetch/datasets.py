@@ -62,11 +62,11 @@ class AHNProvider(PointCloudProvider):
     crs = "EPSG:28992"
 
     def _download_index(self) -> Path:
-        local_path = self.data_dir / f"{self.index_cache_name}.gpkg"
+        local_path = self.index_dir / f"{self.index_cache_name}.gpkg"
         if not local_path.exists():
             logger.info(f"Downloading index: {self.index_cache_name}...")
             if self.index_url.endswith(".zip"):
-                tmp_zip = self.data_dir / "tmp_index.zip"
+                tmp_zip = self.index_dir / "tmp_index.zip"
                 urllib.request.urlretrieve(self.index_url, tmp_zip)
                 with zipfile.ZipFile(tmp_zip) as zf:
                     gpkg_name = next(n for n in zf.namelist() if n.endswith(".gpkg"))
@@ -180,7 +180,7 @@ class CanElevation(PointCloudProvider):
 
     def _download_index(self) -> Path:
         """Downloads the master tile index."""
-        local_path = self.data_dir / "nrcan_tile_index.gpkg"
+        local_path = self.index_dir / "nrcan_tile_index.gpkg"
 
         if not local_path.exists():
             logger.info(f"[{self.name}] Downloading master TILE index...")

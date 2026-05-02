@@ -4041,7 +4041,7 @@ packages:
 - pypi: ./
   name: cloudfetch
   version: 0.1.2
-  sha256: 4e59130cd2e4d81ace4d49286ddc2485c2f3b53f4ce644355a59768b91f86c35
+  sha256: c44833074e14e85ad37713697475e3ea5b3bf261bbbab0a5d0e5feda9ac65917
   requires_dist:
   - geopandas
   - shapely

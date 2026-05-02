@@ -183,24 +183,69 @@ def test_make_map_offline_warning(monkeypatch):
     # Force the internet check to return False
     monkeypatch.setattr("cloudfetch.base.has_internet", lambda: False)
 
-    # Mock tkinter to avoid opening actual windows during tests
-    # We check if Label is called with the expected 'OFFLINE' text
+    # Mock tkinter to avoid display dependency in headless CI
     label_texts = []
-    original_label = tk.Label
 
-    def mock_label(master, **kwargs):
-        if "text" in kwargs:
-            label_texts.append(kwargs["text"])
-        return original_label(master, **kwargs)
+    # Create a mock Tk root that doesn't require a display
+    class MockTk:
+        def __init__(self):
+            self.children = {}
+            self.tk = self
 
-    monkeypatch.setattr(tk, "Label", mock_label)
+        def title(self, name):
+            pass
 
-    # We must mock root.mainloop or the test will hang
-    monkeypatch.setattr(tk.Tk, "mainloop", lambda self: None)
+        def geometry(self, spec):
+            pass
+
+        def pack(self, **kw):
+            pass
+
+        def mainloop(self):
+            pass
+
+        def destroy(self):
+            pass
+
+    # Mock Frame to avoid display dependency
+    class MockFrame:
+        def __init__(self, master, **kwargs):
+            self.master = master
+
+        def pack(self, **kw):
+            pass
+
+    # Mock Label to capture text
+    class MockLabel:
+        def __init__(self, master, **kwargs):
+            if "text" in kwargs:
+                label_texts.append(kwargs["text"])
+
+        def pack(self, **kw):
+            pass
+
+    monkeypatch.setattr(tk, "Tk", MockTk)
+    monkeypatch.setattr(tk, "Frame", MockFrame)
+    monkeypatch.setattr(tk, "Label", MockLabel)
+
+    # Mock the map widget
+    class MockMapWidget:
+        def pack(self, **kw):
+            pass
+
+        def set_position(self, lat, lon):
+            pass
+
+        def set_zoom(self, level):
+            pass
+
+        def add_left_click_map_command(self, fn):
+            pass
+
+    mock_tkintermapview = type("MockModule", (), {"TkinterMapView": lambda *args, **kw: MockMapWidget()})()
+    monkeypatch.setattr("cloudfetch.base.tkintermapview", mock_tkintermapview)
 
     root, map_widget, controls = make_map("Test Title")
 
     # Check if the offline warning text was passed to a Label constructor
     assert any("OFFLINE" in t for t in label_texts)
-
-    root.destroy()

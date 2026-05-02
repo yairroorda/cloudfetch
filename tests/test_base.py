@@ -1,9 +1,10 @@
 import json
 import sys
+import tkinter as tk
 import types
 from pathlib import Path
 
-from cloudfetch.base import PointCloudProvider
+from cloudfetch.base import PointCloudProvider, make_map
 
 
 class DummyProvider(PointCloudProvider):
@@ -175,3 +176,31 @@ def test_fetch_returns_none_if_no_tiles_found(tmp_path: Path, dummy_polygon_rdne
     result = provider.fetch(dummy_polygon_rdnew, output_path=tmp_path / "output.copc.laz", aoi_crs="EPSG:28992")
 
     assert result is None
+
+
+def test_make_map_offline_warning(monkeypatch):
+    """Verify that the warning label logic is triggered when offline."""
+    # Force the internet check to return False
+    monkeypatch.setattr("cloudfetch.base.has_internet", lambda: False)
+
+    # Mock tkinter to avoid opening actual windows during tests
+    # We check if Label is called with the expected 'OFFLINE' text
+    label_texts = []
+    original_label = tk.Label
+
+    def mock_label(master, **kwargs):
+        if "text" in kwargs:
+            label_texts.append(kwargs["text"])
+        return original_label(master, **kwargs)
+
+    monkeypatch.setattr(tk, "Label", mock_label)
+
+    # We must mock root.mainloop or the test will hang
+    monkeypatch.setattr(tk.Tk, "mainloop", lambda self: None)
+
+    root, map_widget, controls = make_map("Test Title")
+
+    # Check if the offline warning text was passed to a Label constructor
+    assert any("OFFLINE" in t for t in label_texts)
+
+    root.destroy()

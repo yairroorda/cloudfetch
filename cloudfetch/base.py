@@ -10,7 +10,7 @@ import geopandas as gpd
 from shapely.geometry import Polygon as ShapelyPolygon
 
 from .exceptions import PDALExecutionError, ProviderFetchError
-from .utils import status_spinner, timed
+from .utils import has_internet, status_spinner, timed
 
 tkintermapview = importlib.import_module("tkintermapview")
 
@@ -314,6 +314,11 @@ def make_map(title):
 
     controls = tk.Frame(root, padx=10, pady=10)
     controls.pack(side=tk.RIGHT, fill=tk.Y)
+
+    if not has_internet():
+        error_message = "OFFLINE\n No connection detected on startup.\n Map tiles may not load."
+        warning_label = tk.Label(controls, text=error_message, fg="red", font=("Arial", 10, "bold"))
+        warning_label.pack(fill=tk.X, pady=(0, 10))
 
     map_widget.set_position(float(_START_LAT), float(_START_LON))
     map_widget.set_zoom(13)

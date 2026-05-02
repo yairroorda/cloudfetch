@@ -10,6 +10,7 @@ jobs:
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    if: "!contains(github.event.head_commit.message, '[no test]')"
     strategy:
       fail-fast: false # If Windows fails, let Mac and Linux finish
       matrix:

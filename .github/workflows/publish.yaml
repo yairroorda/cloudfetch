@@ -24,10 +24,10 @@ jobs:
           environments: dev
 
       - name: Build Distribution
-        run: pixi run build-dist
+        run: pixi run -e dev build-dist
 
       - name: Check Distribution
-        run: pixi run check-dist
+        run: pixi run -e dev check-dist
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

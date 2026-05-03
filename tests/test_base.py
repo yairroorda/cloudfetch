@@ -97,7 +97,7 @@ def test_execute_pdal_returns_expected_output_path(tmp_path: Path, dummy_polygon
     assert result_path == output_path
 
 
-def test_execute_pdal_with_resolution(tmp_path: Path, dummy_polygon_rdnew, monkeypatch) -> None:
+def test_execute_pdal_with_sampling_radius(tmp_path: Path, dummy_polygon_rdnew, monkeypatch) -> None:
     payloads: list[dict] = []
 
     class FakePipeline:
@@ -115,7 +115,7 @@ def test_execute_pdal_with_resolution(tmp_path: Path, dummy_polygon_rdnew, monke
         ["https://example.test/tile.copc.laz"],
         dummy_polygon_rdnew,
         output_path,
-        resolution=1.5,
+        sampling_radius=1.5,
     )
 
     sample_stages = [stage for stage in payloads[0] if stage.get("type") == "filters.sample"]

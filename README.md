@@ -16,7 +16,7 @@ Tired of endlessly clicking through portals to download LiDAR data? Is your area
 * **Multiple Open Datasets:** Built-in support for multiple national remote point cloud datasets, including the Dutch AHN series, French IGN LiDAR HD, and Canadian CanElevation.
 * **Extendible Architecture** Integrate new data sources by subclassing the abstract PointCloudProvider. Developers only need to implement a single get_index method to retrieve tile URLs, and the base class will automatically handle the heavy lifting of downloading, cropping, and merging via PDAL.
 * **Provider Chaining:** Use `ProviderChain` to automatically attempt downloads across multiple datasets in sequence (e.g., trying AHN6, and falling back to AHN5 if data is unavailable).
-* **Dynamic Resolution Control:** Control the output density via minimum point spacing (Poisson thinning) to keep file sizes manageable.
+* **Dynamic Poisson Sampling:** Control the output density via minimum point spacing (Poisson thinning) to keep file sizes manageable.
 
 ## **Who cloudfetch is for**
 Cloudfetch is basically a part of my Thesis at [TU Delft](https://www.tudelft.nl/onderwijs/opleidingen/masters/gm/msc-geomatics) that got out of hand. After a few hours of clicking through portals and dragging files aroud had me frustrated I decided to spend 10x that time building this. Basically, while anyone is welcome to use or copy cloudfetch keep in mind that:
@@ -106,12 +106,12 @@ If you already have a predefined shape (such as a GeoJSON file), you can bypass 
 aoi = AOIPolygon.get_from_file(Path("my_boundary.geojson"))
 ```
 
-### Adjusting Resolution
-You can dynamically thin the dataset to a specific minimum point spacing by supplying a `resolution` float (in coordinate units) to the `fetch()` method:
+### Adjusting Density
+You can dynamically thin the dataset to a specific minimum point spacing by supplying a `sampling_radius` float (in coordinate units) to the `fetch()` method:
 
 ```python
 # Apply a 2.0 coordinate unit radius for Poisson thinning
-provider.fetch(aoi=aoi.polygon, resolution=2.0)
+provider.fetch(aoi=aoi.polygon, sampling_radius=2.0)
 ```
 
 

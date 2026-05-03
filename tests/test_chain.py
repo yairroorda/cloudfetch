@@ -11,7 +11,7 @@ class MockProviderA(PointCloudProvider):
     def get_index(self, aoi_gdf):
         return []
 
-    def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+    def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
         raise Exception("provider A failed")
 
 
@@ -23,7 +23,7 @@ class MockProviderB(PointCloudProvider):
     def get_index(self, aoi_gdf):
         return []
 
-    def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+    def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
         path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"ok")
@@ -89,7 +89,7 @@ def test_provider_chain_raises_exception_if_all_providers_fail_with_different_er
         def get_index(self, aoi_gdf):
             return []
 
-        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
             raise Exception("provider C failed")
 
     chain = ProviderChain([MockProviderA(), MockProviderC()], data_dir=tmp_path)
@@ -115,7 +115,7 @@ def test_provider_chain_returns_none_if_all_providers_return_none(dummy_polygon_
         def get_index(self, aoi_gdf):
             return []
 
-        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
             return None
 
     chain = ProviderChain([MockProviderD(), MockProviderD()], data_dir=tmp_path)
@@ -136,7 +136,7 @@ def test_provider_chain_returns_first_successful_result(dummy_polygon_rdnew, tmp
         def get_index(self, aoi_gdf):
             return []
 
-        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"ok from E")
@@ -150,7 +150,7 @@ def test_provider_chain_returns_first_successful_result(dummy_polygon_rdnew, tmp
         def get_index(self, aoi_gdf):
             return []
 
-        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", resolution=None):
+        def fetch(self, aoi, output_path=None, aoi_crs="EPSG:28992", sampling_radius=None):
             path = Path(output_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"ok from F")

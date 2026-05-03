@@ -28,16 +28,16 @@ def demo_AHN():
         logger.error("❌ Failed to retrieve data from any source in the chain.")
 
 
-def demo_resolution():
-    aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for resolution demo")
+def demo_sampling():
+    aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for sampling demo")
     provider = AHN6(data_dir="./data")
-    for resolution in ["full", 0.5, 1.0, 2.0]:
-        output_path = Path(f"./data/resolution_test_{resolution or 'full'}.copc.laz")
-        result_path = provider.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path=output_path, resolution=resolution)
+    for sampling_radius in [None, 0.5, 1.0, 2.0]:
+        output_path = Path(f"./data/sampling_test_{sampling_radius}.copc.laz")
+        result_path = provider.fetch(aoi=aoi_rdnew.polygon, aoi_crs=aoi_rdnew.crs, output_path=output_path, sampling_radius=sampling_radius)
         if result_path:
-            logger.info(f"✅ Success with resolution={resolution}! Output at: {result_path}")
+            logger.info(f"✅ Success with sampling_radius={sampling_radius}! Output at: {result_path}")
         else:
-            logger.error(f"❌ Failed to fetch data with resolution={resolution}.")
+            logger.error(f"❌ Failed to fetch data with sampling_radius={sampling_radius}.")
 
 
 def demo_lidar_hd():
@@ -76,7 +76,7 @@ def main():
     demo_AHN()
     demo_lidar_hd()
     demo_can_elevation()
-    demo_resolution()
+    demo_sampling()
 
 
 if __name__ == "__main__":

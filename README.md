@@ -2,7 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/cloudfetch.svg)](https://pypi.org/project/cloudfetch/)
 [![Documentation](https://img.shields.io/badge/docs-MkDocs-blue.svg)](https://yairroorda.github.io/cloudfetch/)
-[![CI Tests](https://github.com/yairroorda/cloudfetch/actions/workflows/ci.yaml/badge.svg)](https://github.com/yairroorda/cloudfetch/actions/workflows/ci.yaml)[![Python Versions](https://img.shields.io/pypi/pyversions/cloudfetch.svg)](https://pypi.org/project/cloudfetch/)
+[![CI Tests](https://github.com/yairroorda/cloudfetch/actions/workflows/ci.yaml/badge.svg)](https://github.com/yairroorda/cloudfetch/actions/workflows/ci.yaml)
+[![Python Versions](https://img.shields.io/pypi/pyversions/cloudfetch.svg)](https://pypi.org/project/cloudfetch/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Tired of endlessly clicking through portals to download LiDAR data? Is your area of interest always on intersection of 4 neighbouring tiles? 

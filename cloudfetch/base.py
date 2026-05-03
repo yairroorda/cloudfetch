@@ -235,6 +235,8 @@ class ProviderChain(PointCloudProvider):
         for provider in self.providers:
             # Sync the child provider's data directory with the chain's target
             provider.data_dir = target_dir
+            provider.index_dir = provider.data_dir / "indices"
+            provider.index_dir.mkdir(parents=True, exist_ok=True)
 
             try:
                 result = provider.fetch(aoi=aoi, output_path=target_path, aoi_crs=aoi_crs, resolution=resolution)

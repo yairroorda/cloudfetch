@@ -72,6 +72,10 @@ def test_provider_chain_syncs_data_dir_with_child_providers(dummy_polygon_rdnew,
 
     assert provider_a.data_dir == tmp_path
     assert provider_b.data_dir == tmp_path
+    assert provider_a.index_dir == tmp_path / "indices"
+    assert provider_b.index_dir == tmp_path / "indices"
+    assert provider_a.index_dir.exists()
+    assert provider_b.index_dir.exists()
 
 
 def test_provider_chain_raises_exception_if_all_providers_fail_with_different_errors(dummy_polygon_rdnew, tmp_path: Path) -> None:
@@ -159,3 +163,31 @@ def test_provider_chain_returns_first_successful_result(dummy_polygon_rdnew, tmp
     assert result == out_path
     assert out_path.exists()
     assert out_path.read_bytes() == b"ok from E"
+
+
+def test_provider_chain_syncs_index_dir_with_custom_output_path(dummy_polygon_rdnew, tmp_path: Path) -> None:
+    """Verify index_dir is synced when using a custom output path outside chain data_dir."""
+    # Use a custom output location different from chain's data_dir
+    custom_output_dir = tmp_path / "custom_output"
+    out_path = custom_output_dir / "result.copc.laz"
+
+    # Use provider A (fails) then B (succeeds) to test sync on attempted providers
+    provider_a = MockProviderA(data_dir=tmp_path)
+    provider_b = MockProviderB(data_dir=tmp_path)
+    chain = ProviderChain([provider_a, provider_b], data_dir=tmp_path)
+
+    # Fetch to a completely different output directory
+    result = chain.fetch(dummy_polygon_rdnew, output_path=out_path, aoi_crs="EPSG:28992")
+
+    # Verify result was written to custom location
+    assert result == out_path
+    assert out_path.exists()
+
+    # Verify both providers' index directories were synced to custom_output_dir
+    # (A is synced before failing, B is synced before succeeding)
+    assert provider_a.data_dir == custom_output_dir
+    assert provider_b.data_dir == custom_output_dir
+    assert provider_a.index_dir == custom_output_dir / "indices"
+    assert provider_b.index_dir == custom_output_dir / "indices"
+    assert provider_a.index_dir.exists()
+    assert provider_b.index_dir.exists()

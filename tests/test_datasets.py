@@ -21,6 +21,32 @@ def test_can_elevation_get_index_extracts_urls(dummy_aoi_gdf, tmp_path: Path, mo
 
     monkeypatch.setattr(gpd, "read_file", lambda *args, **kwargs: fake_index)
 
-    urls = provider.get_index(dummy_aoi_gdf)
+    records = provider.get_index(dummy_aoi_gdf)
 
+    urls = [record.url for record in records]
     assert urls == ["https://fake.laz", "https://fake2.laz"]
+
+
+def test_can_elevation_resolve_record_crs_from_utm_zone(tmp_path: Path) -> None:
+    provider = CanElevation(data_dir=tmp_path)
+
+    crs = provider._resolve_record_crs(
+        "AB_Edmonton2018_20180426_NAD83CSRS_UTMZ12_1km_E3790_N58940_CLASS",
+        "https://example.test/AB_Edmonton2018_20180426_NAD83CSRS_UTMZ12_1km_E3790_N58940_CLASS.copc.laz",
+    )
+
+    assert crs == "EPSG:2956"
+
+
+def test_can_elevation_resolve_record_crs_from_longitude_fallback(tmp_path: Path) -> None:
+    provider = CanElevation(data_dir=tmp_path)
+
+    crs = provider._resolve_record_crs(
+        "1km173230465902017LLAKEERIE",
+        "https://example.test/pointcloud.copc.laz",
+        longitude=-113.49,
+    )
+
+    # The tile name doesn't contain UTM zone info, so it should fall back to longitude-based CRS resolution.
+    # Given the longitude of -113.49, it should resolve to UTM zone 12N, which corresponds to EPSG:2956.
+    assert crs == "EPSG:2956"

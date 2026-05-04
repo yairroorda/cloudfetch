@@ -2,8 +2,9 @@ import json
 import sys
 import types
 from pathlib import Path
+from unittest.mock import patch
 
-from cloudfetch.base import PointCloudProvider, make_map
+from cloudfetch.base import PointCloudProvider, TileRecord, make_map
 
 
 class DummyProvider(PointCloudProvider):
@@ -13,6 +14,79 @@ class DummyProvider(PointCloudProvider):
 
     def get_index(self, aoi_gdf):
         return []
+
+
+def test_base_fetch_groups_by_crs(tmp_path: Path, dummy_polygon_rdnew, monkeypatch) -> None:
+    """Proves the base class correctly groups tiles by their native CRS before executing PDAL."""
+
+    class MultiCRSProvider(PointCloudProvider):
+        name = "MultiCRS"
+        crs = "EPSG:4326"
+        file_type = "COPC"
+
+        def get_index(self, aoi_gdf):
+            return [
+                TileRecord(url="file1.laz", crs="EPSG:2956"),
+                TileRecord(url="file2.laz", crs="EPSG:2956"),  # Same group
+                TileRecord(url="file3.laz", crs="EPSG:2959"),  # Different group
+            ]
+
+    provider = MultiCRSProvider(data_dir=tmp_path)
+
+    executed_groups = []
+
+    def fake_execute(tile_urls, aoi, output_path, sampling_radius=None):
+        executed_groups.append(tile_urls)
+        return output_path
+
+    monkeypatch.setattr(provider, "_execute_pdal", fake_execute)
+
+    monkeypatch.setattr(provider, "_merge_outputs", lambda outputs, out, target_crs: out)
+
+    provider.fetch(aoi=dummy_polygon_rdnew, output_path=tmp_path / "out.laz")
+
+    # Assert PDAL was executed exactly twice (once for 2956, once for 2959)
+    assert len(executed_groups) == 2
+    assert ["file1.laz", "file2.laz"] in executed_groups
+    assert ["file3.laz"] in executed_groups
+
+
+def test_base_merge_outputs_reprojects_to_target(tmp_path: Path) -> None:
+    """Proves the base merge method injects a reprojection stage to prevent spatial corruption."""
+
+    class Dummy(PointCloudProvider):
+        name = "Dummy"
+        crs = "EPSG:4326"
+        file_type = "COPC"
+
+        def get_index(self, aoi_gdf):
+            return []
+
+    provider = Dummy(data_dir=tmp_path)
+
+    captured_pipeline = {}
+
+    class FakePipeline:
+        def __init__(self, js):
+            nonlocal captured_pipeline
+            captured_pipeline = json.loads(js)
+
+        def execute(self):
+            return 100  # Return dummy point count
+
+    f1 = tmp_path / "group1.laz"
+    f2 = tmp_path / "group2.laz"
+    out_path = tmp_path / "merged.laz"
+
+    # Use patch to safely hijack the Pipeline class inside the pdal module
+    with patch("pdal.Pipeline", FakePipeline):
+        provider._merge_outputs([f1, f2], out_path, target_crs="EPSG:4326")
+
+    # 3. Verify the pipeline JSON was built correctly
+    repro_stages = [stage for stage in captured_pipeline if stage.get("type") == "filters.reprojection"]
+
+    assert len(repro_stages) == 2, "Should have one reprojection stage per input file"
+    assert all(stage.get("out_srs") == "EPSG:4326" for stage in repro_stages), "Outputs must be forced to the target CRS"
 
 
 def test_execute_pdal_builds_expected_pipeline_and_uses_mocked_execute(tmp_path: Path, dummy_polygon_rdnew, monkeypatch) -> None:
@@ -140,6 +214,28 @@ def test_execute_pdal_logs_expected_message_on_success(tmp_path: Path, dummy_pol
         provider._execute_pdal(["https://example.test/tile.copc.laz"], dummy_polygon_rdnew, output_path)
 
     assert f"[{provider.name}] Processed 54321 points from 1 tiles into {output_path.name}" in caplog.text
+
+
+def test_execute_pdal_returns_none_on_zero_points(tmp_path: Path, dummy_polygon_rdnew, monkeypatch, caplog) -> None:
+    class ZeroPipeline:
+        def __init__(self, pipeline_json: str):
+            pass
+
+        def execute(self) -> int:
+            return 0
+
+    monkeypatch.setitem(sys.modules, "pdal", types.SimpleNamespace(Pipeline=ZeroPipeline))
+
+    provider = DummyProvider(data_dir=tmp_path)
+    output_path = tmp_path / "output.copc.laz"
+    output_path.write_bytes(b"placeholder")
+
+    with caplog.at_level("INFO"):
+        result = provider._execute_pdal(["https://example.test/tile.copc.laz"], dummy_polygon_rdnew, output_path)
+
+    assert result is None
+    assert not output_path.exists()
+    assert "Processed 0 points for AOI" in caplog.text
 
 
 def test_fetch_raises_exception_if_get_index_fails(tmp_path: Path, dummy_polygon_rdnew) -> None:

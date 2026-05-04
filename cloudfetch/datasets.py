@@ -8,9 +8,9 @@ from typing import List
 import geopandas as gpd
 import requests
 
-from .base import PointCloudProvider
-from .exceptions import ProviderFetchError
-from .utils import download_file
+from cloudfetch.base import PointCloudProvider, TileRecord
+from cloudfetch.exceptions import ProviderFetchError
+from cloudfetch.utils import download_file
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -29,6 +29,10 @@ class IGNLidarHD(PointCloudProvider):
     wfs_url = "https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=IGNF_NUAGES-DE-POINTS-LIDAR-HD:dalle&OUTPUTFORMAT=application/json"
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+        # reproject AOI to match index CRS for accurate spatial querying
+        if aoi_gdf.crs != self.crs:
+            aoi_gdf = aoi_gdf.to_crs(self.crs)
+
         bounds = aoi_gdf.total_bounds
         crs_code = self.crs.split(":")[1]
         bbox_str = f"{bounds[0]},{bounds[1]},{bounds[2]},{bounds[3]},urn:ogc:def:crs:EPSG::{crs_code}"
@@ -40,7 +44,7 @@ class IGNLidarHD(PointCloudProvider):
 
         urls = list(dict.fromkeys(index_gdf["url"].dropna().tolist()))
         rewritten_urls = [self._rewrite_to_ovh(url) for url in urls]
-        return [url for url in rewritten_urls if url]
+        return [TileRecord(url=url, crs=self.crs) for url in rewritten_urls if url]
 
     def _rewrite_to_ovh(self, url: str) -> str | None:
         OVH_BASE_URL = "https://storage.sbg.cloud.ovh.net/v1/AUTH_63234f509d6048bca3c9fd7928720ca1/ppk-lidar/"
@@ -126,12 +130,15 @@ class AHN6(AHNProvider):
         if hits.empty:
             return []
 
-        urls = []
+        records = []
         for _, row in hits.iterrows():
             x = str(int(row["left"])).zfill(6)
             y = str(int(row["bottom"])).zfill(6)
-            urls.append(f"{self.base_url}AHN6_2025_C_{x}_{y}.COPC.LAZ")
-        return list(dict.fromkeys(urls))
+            url = f"{self.base_url}AHN6_2025_C_{x}_{y}.COPC.LAZ"
+            # Hardcode self.crs since the whole country is EPSG:28992
+            records.append(TileRecord(url=url, crs=self.crs))
+
+        return records
 
 
 class AHNArchive(AHNProvider):
@@ -182,7 +189,7 @@ class AHNArchive(AHNProvider):
             except requests.RequestException:
                 pass
 
-        return valid_urls
+        return [TileRecord(url=url, crs=self.crs) for url in valid_urls]
 
 
 # Expose clean wrappers for the user
@@ -228,11 +235,13 @@ class CanElevation(PointCloudProvider):
     """
 
     name = "CanElevation"
-    # Setting this to 2959 ensures the fetch() method reprojects
-    # the AOI into the correct UTM meters for the PDAL crop.
-    crs = "EPSG:2959"
+    # The NRCan index is geographic NAD83(CSRS). Individual point-cloud
+    # projects are often in different projected CRSs (commonly UTM zones),
+    # so crop CRS must be resolved per tile/project.
+    crs = "EPSG:4617"
     file_type = "COPC"
     index_url = "https://canelevation-lidar-point-clouds.s3-ca-central-1.amazonaws.com/pointclouds_nuagespoints/Index_LiDARtiles_tuileslidar.gpkg"
+    _utm_epsg_map: dict[int, str] | None = None
 
     def _download_index(self) -> Path:
         """Downloads the master tile index."""
@@ -244,14 +253,77 @@ class CanElevation(PointCloudProvider):
 
         return local_path
 
-    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+    @staticmethod
+    def _build_nad83_csrs_utm_epsg_map() -> dict[int, str]:
+        """Build mapping for NAD83(CSRS) UTM zone -> EPSG code."""
+        from pyproj.database import query_crs_info
+
+        mapping: dict[int, str] = {}
+        for info in query_crs_info(auth_name="EPSG"):
+            match = re.fullmatch(r"NAD83\(CSRS\) / UTM zone (\d{1,2})N", info.name)
+            if match:
+                mapping[int(match.group(1))] = f"EPSG:{info.code}"
+        return mapping
+
+    @classmethod
+    def _get_nad83_csrs_utm_epsg(cls, zone: int) -> str | None:
+        if cls._utm_epsg_map is None:
+            cls._utm_epsg_map = cls._build_nad83_csrs_utm_epsg_map()
+        return cls._utm_epsg_map.get(zone)
+
+    @staticmethod
+    def _extract_utm_zone(text: str) -> int | None:
+        # Handles patterns like UTMZ12 and UTM17
+        match = re.search(r"UTM(?:Z|_)?(\d{1,2})(?!\d)", text, flags=re.IGNORECASE)
+        if not match:
+            return None
+        return int(match.group(1))
+
+    @staticmethod
+    def _utm_zone_from_longitude(lon: float) -> int | None:
+        if lon < -180 or lon > 180:
+            return None
+        return int((lon + 180) // 6) + 1  # 60 UTM zones of 6 degrees each globally
+
+    def _resolve_record_crs(self, tile_name: str, url: str, longitude: float | None = None) -> str:
+        # Gather potential zone integer sources in order of preference
+        potential_zones = (
+            self._extract_utm_zone(tile_name or ""),  # try to extract zone from tile name
+            self._extract_utm_zone(url or ""),  # try to extract zone from URL
+            self._utm_zone_from_longitude(longitude) if longitude is not None else None,  # try to infer zone from longitude if available
+        )
+
+        # Lazily get the first valid zone
+        zone = next((z for z in potential_zones if z is not None), None)
+
+        # Perform EPSG lookup for the zone if found
+        if zone is not None:
+            epsg = self._get_nad83_csrs_utm_epsg(zone)
+            if epsg:
+                return epsg
+
+        # If we can't resolve a specific projected CRS, log a warning and default to the master index CRS.
+        logger.warning(f"[{self.name}] Could not resolve CRS for record (tile_name='{tile_name}', url='{url}'). Defaulting to master index CRS {self.crs}.")
+        return self.crs
+
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
         index_path = self._download_index()
         aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
 
         logger.info(f"[{self.name}] Querying tile index for AOI...")
-        index_gdf = gpd.read_file(index_path, mask=aoi_for_join)
+        index_gdf = gpd.read_file(index_path, layer="index_lidartiles_tuileslidar", mask=aoi_for_join)
 
-        if index_gdf.empty:
+        # Match AOI CRS to the exact index CRS object to avoid false-positive
+        # CRS mismatch warnings when equivalent definitions use different text.
+        if not index_gdf.empty and index_gdf.crs is not None:
+            aoi_for_join = aoi_for_join.to_crs(index_gdf.crs)
+
+        # `mask` is a coarse pre-filter at IO level; apply exact geometry
+        # intersection to remove occasional false positives.
+        if not index_gdf.empty:
+            index_gdf = gpd.sjoin(index_gdf, aoi_for_join[["geometry"]], how="inner", predicate="intersects")
+            index_gdf = index_gdf.drop(columns=["index_right"], errors="ignore")
+        else:
             logger.warning(f"[{self.name}] No tiles found for this AOI.")
             return []
 
@@ -262,5 +334,27 @@ class CanElevation(PointCloudProvider):
         if url_col not in index_gdf.columns:
             raise ProviderFetchError(self.name, "NRCan index missing URL column.")
 
-        urls = index_gdf[url_col].dropna().unique().tolist()
-        return [u for u in urls if u.lower().endswith((".laz", ".copc"))]
+        tile_name_col = "Tile_name" if "Tile_name" in index_gdf.columns else "tile_name"
+
+        unique_records: dict[str, TileRecord] = {}
+
+        for _, row in index_gdf.iterrows():
+            url = row.get(url_col)
+            # Skip if URL is missing or doesn't look like a point cloud file
+            if not isinstance(url, str) or not url.lower().endswith((".laz", ".copc")):
+                continue
+
+            # Skip if we already processed this URL
+            if url in unique_records:
+                continue
+
+            tile_name = str(row.get(tile_name_col, ""))
+
+            # Safe centroid calculation
+            record_lon = None
+            if row.geometry and not row.geometry.is_empty:
+                record_lon = float(row.geometry.centroid.x)
+
+            unique_records[url] = TileRecord(url=url, crs=self._resolve_record_crs(tile_name, url, longitude=record_lon))
+
+        return list(unique_records.values())

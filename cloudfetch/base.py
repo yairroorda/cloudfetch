@@ -3,9 +3,12 @@ import json
 import logging
 import tkinter as tk
 from abc import ABC, abstractmethod
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 
 import geopandas as gpd
+import pdal
 from shapely.geometry import Polygon as ShapelyPolygon
 
 from .exceptions import PDALExecutionError, ProviderFetchError
@@ -18,6 +21,24 @@ _START_LON, _START_LAT = 6.5665, 53.2194
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+
+@dataclass
+class TileRecord:
+    """
+    Couples a point cloud tile's download URL with its native Coordinate Reference System.
+    Required by the base fetch method to group tiles by CRS before PDAL processing.
+
+    Parameters
+    ----------
+    url : str
+        URL or local path to the point cloud tile.
+    crs : str
+        Coordinate reference system of the tile.
+    """
+
+    url: str
+    crs: str
 
 
 class PointCloudProvider(ABC):
@@ -43,13 +64,18 @@ class PointCloudProvider(ABC):
         self.index_dir.mkdir(parents=True, exist_ok=True)
 
     @abstractmethod
-    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> list[str]:
-        """Returns a list of downloadable tile URLs.
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> list[TileRecord]:
+        """Returns download URLs intersecting the AOI and their CRS.
 
         Parameters
         ----------
         aoi_gdf : gpd.GeoDataFrame
             AOI geometry as a GeoDataFrame in the provider CRS.
+
+        Returns
+        -------
+        list[TileRecord]
+            List of tile records with download URLs and CRS information.
         """
         ...
 
@@ -59,7 +85,7 @@ class PointCloudProvider(ABC):
         aoi: ShapelyPolygon,
         output_path: Path,
         sampling_radius: float | None = None,
-    ) -> Path:
+    ) -> Path | None:
         """Execute the PDAL pipeline to crop, merge, and write output data.
 
         Parameters
@@ -77,8 +103,9 @@ class PointCloudProvider(ABC):
 
         Returns
         -------
-        Path
-            The output path written by PDAL.
+        Path | None
+            The output path written by PDAL, or ``None`` when the pipeline
+            runs successfully but yields zero points for the AOI.
         """
         try:
             import pdal  # type: ignore
@@ -124,7 +151,75 @@ class PointCloudProvider(ABC):
         except Exception as exc:
             raise PDALExecutionError(self.name, f"PDAL pipeline execution failed: {exc}") from exc
 
+        if count == 0:
+            if output_path.exists():
+                output_path.unlink()
+            logger.info(f"[{self.name}] Processed 0 points for AOI; no output written.")
+            return None
+
         logger.info(f"[{self.name}] Processed {count} points from {len(tile_urls)} tiles into {output_path.name}")
+        return output_path
+
+    def _merge_outputs(self, outputs: list[Path], output_path: Path, target_crs: str = "EPSG:4326") -> Path | None:
+        """Merges multiple files, reprojecting them to a unified CRS to prevent spatial corruption.
+
+        While having to write intermediate files is not ideal, it will have to do for now.
+        There are branches PDAL pipelines that support in-memory processing,
+        but they are pretty complex and fragile (both for memory and network failure recovery).
+        If we wanted to get fancy, we could explore using PDAL's Python API to build a custom pipeline
+        that streams data through memory without writing intermediate files, but that would be a non-trivial
+        amount of work and may not even be possible with the COPC writer. For now, we'll stick with the simpler
+        approach of writing intermediate files and merging them.
+
+        Parameters
+        ----------
+        outputs : list[Path]
+            List of file paths to merge.
+        output_path : Path
+            Destination path for the merged output.
+        target_crs : str, default="EPSG:4326"
+            Target CRS for the merged output.
+
+        Returns
+        -------
+        Path | None
+            The merged output path, or ``None`` if no points were merged.
+        """
+        stages = []
+        merge_inputs = []
+
+        for i, path in enumerate(outputs):
+            reader_tag = f"reader_{i}"
+            repro_tag = f"repro_{i}"
+            stages.append({"type": "readers.copc", "filename": str(path), "tag": reader_tag})
+            # Force everything into the target CRS before merging
+            stages.append({"type": "filters.reprojection", "out_srs": target_crs, "inputs": [reader_tag], "tag": repro_tag})
+            merge_inputs.append(repro_tag)
+
+        pipeline = stages + [
+            {"type": "filters.merge", "inputs": merge_inputs},
+            {
+                "type": "writers.copc",
+                "filename": str(output_path),
+                "forward": "all",
+                "a_srs": target_crs,
+                "offset_x": "auto",
+                "offset_y": "auto",
+                "offset_z": "auto",
+            },
+        ]
+
+        try:
+            with status_spinner(f"Merging {len(outputs)} CRS groups into unified {target_crs} ..."):
+                count = pdal.Pipeline(json.dumps(pipeline)).execute()
+        except Exception as exc:
+            raise PDALExecutionError(self.name, f"PDAL merge pipeline failed: {exc}") from exc
+
+        if count == 0:
+            if output_path.exists():
+                output_path.unlink()
+            return None
+
         return output_path
 
     @timed("Pointcloud query")
@@ -160,20 +255,56 @@ class PointCloudProvider(ABC):
         else:
             output_path = Path(output_path)
 
-        gdf_aoi = gpd.GeoDataFrame(geometry=[aoi], crs=aoi_crs).to_crs(self.crs)
-        tile_urls = self.get_index(gdf_aoi)
+        gdf_aoi = gpd.GeoDataFrame(geometry=[aoi], crs=aoi_crs)
+        records = self.get_index(gdf_aoi)
 
-        if not tile_urls:
+        if not records:
             logger.warning(f"[{self.name}] No intersecting tiles found.")
             return None
 
-        logger.info(f"[{self.name}] Found {len(tile_urls)} tiles. Downloading...")
+        # Group by CRS
+        groups: dict[str, list[str]] = defaultdict(list)
+        for record in records:
+            groups[record.crs].append(record.url)
+
+        logger.info(f"[{self.name}] Found {len(records)} tiles across {len(groups)} CRS group(s).")
+
+        # Execute PDAL per CRS group
+        group_outputs: list[Path] = []
+        for i, (group_crs, group_urls) in enumerate(groups.items()):
+            group_output = output_path if len(groups) == 1 else output_path.with_name(f"{output_path.stem}__group_{i}.copc.laz")
+
+            # Reproject AOI to the specific native CRS of this group
+            aoi_projected = gdf_aoi.to_crs(group_crs).geometry.iloc[0]
+
+            result = self._execute_pdal(group_urls, aoi_projected, group_output, sampling_radius=sampling_radius)
+            if result:
+                group_outputs.append(result)
+
+        if not group_outputs:
+            logger.warning(f"[{self.name}] All pipelines completed, but 0 points were found in the AOI.")
+            return None
+
+        # If there is only one group, we can return it directly without merging
+        if len(group_outputs) == 1:
+            if group_outputs[0] != output_path:
+                group_outputs[0].replace(output_path)
+            return output_path
+
+        # If we have multiple groups, merge them into a unified file in the target CRS
+        merged = None
         try:
-            return self._execute_pdal(tile_urls, gdf_aoi.geometry.iloc[0], output_path, sampling_radius=sampling_radius)
-        except Exception:
-            if output_path.exists():
-                output_path.unlink()
-            raise
+            merged = self._merge_outputs(group_outputs, output_path, target_crs="EPSG:4326")
+        finally:
+            # Cleanup intermediate group files
+            for path in group_outputs:
+                if path != output_path and path.exists():
+                    try:
+                        path.unlink()
+                    except OSError as e:
+                        logger.debug(f"[{self.name}] Failed to cleanup intermediate file {path.name}: {e}")
+
+        return merged
 
 
 class ProviderChain(PointCloudProvider):

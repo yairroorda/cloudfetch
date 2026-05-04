@@ -28,13 +28,13 @@ def demo_AHN():
     ahn5 = AHN5(data_dir="./data")
     ahn_chain = ProviderChain(providers=[ahn6, ahn5])
 
-    for aoi in [aoi_user, aoi_ahn6, aoi_ahn5]:
+    for name, aoi in [("User", aoi_user), ("AHN6", aoi_ahn6), ("AHN5", aoi_ahn5)]:
         if aoi is None:
             continue
-        result_path = ahn_chain.fetch(aoi=aoi.polygon, aoi_crs=aoi.crs, output_path=f"./data/{aoi.crs}_{aoi.polygon.area}.copc.laz")
+        result_path = ahn_chain.fetch(aoi=aoi.polygon, aoi_crs=aoi.crs, output_path=f"./data/{name}.copc.laz")
 
         if result_path:
-            logger.info(f"✅ Success! Successfully downloaded and processed at: {result_path}")
+            logger.info(f"✅ Success! Successfully downloaded and processed {name} at: {result_path}")
         else:
             logger.error("❌ Failed to retrieve data from any source in the chain.")
 

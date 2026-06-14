@@ -8,4 +8,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Implemented "Docs as Code" using `pytest-codeblocks` to test quickstart block in `README.md`.
 - Started keeping a changelog :)

@@ -20,7 +20,6 @@ pip = "*"
 tkintermapview = "==1.29"
 
 [feature.dev.dependencies]
-pytest = ">=9.0.3,<10"
 ruff = ">=0.6,<1"
 mkdocs = ">=1.6.1,<2"
 mkdocs-material = ">=9.7.6,<10"
@@ -33,6 +32,8 @@ cloudfetch = { path = ".", editable = true }
 responses = "*"
 build = ">=1.2.2,<2"
 twine = ">=6.0.0"
+pytest = ">=9.0.3,<10"
+pytest-codeblocks = ">=0.17.0,<0.18"
 
 [environments]
 default = []

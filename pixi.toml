@@ -32,7 +32,7 @@ cloudfetch = { path = ".", editable = true }
 responses = "*"
 build = ">=1.2.2,<2"
 twine = ">=6.0.0"
-pytest = ">=9.0.3,<10"
+pytest = ">=7,<8"
 pytest-codeblocks = ">=0.17.0,<0.18"
 
 [environments]
@@ -40,7 +40,7 @@ default = []
 dev = ["dev"]
 
 [tasks]
-test = "pytest"
+test = "pytest --codeblocks"
 lint = "ruff check ."
 build-dist = "python -m build"
 check-dist = "python -m twine check dist/*"

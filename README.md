@@ -40,12 +40,12 @@ Because this library relies heavily on **PDAL** for its C++ point cloud processi
 I strongly recommend using a package manager like `conda` or its (in my opinion better) alternative `pixi` to install the PDAL Python bindings and binaries:
 
 **Using Conda/Mamba:**
-```bash
+```console
 conda install -c conda-forge python-pdal
 ```
 
 **Using Pixi:**
-```bash
+```console
 pixi add pdal python-pdal
 ```
 
@@ -54,12 +54,12 @@ pixi add pdal python-pdal
 ### Step 2: Install cloudfetch
 Once PDAL is installed in your environment, you can safely install cloudfetch using pip:
 
-```bash
+```console
 pip install cloudfetch
 ```
 Or through the Pixi CLI:
 
-```bash
+```console
 pixi add --pypi cloudfetch
 ```
 
@@ -67,15 +67,42 @@ pixi add --pypi cloudfetch
 
 Below is a basic example demonstrating how to draw an AOI interactively, chain two AHN datasets together, and download the resulting point cloud. 
 
+<!--
+```python
+from shapely.geometry import Polygon
+from cloudfetch.base import AOIPolygon, ProviderChain
+from pathlib import Path
+
+# Save original functions to prevent monkeypatch leaks
+original_get_from_user = AOIPolygon.get_from_user
+original_fetch = ProviderChain.fetch
+
+# Mock the UI
+dummy_poly = Polygon([
+    (121000.0, 487000.0), 
+    (121100.0, 487000.0), 
+    (121100.0, 487100.0), 
+    (121000.0, 487100.0), 
+    (121000.0, 487000.0)
+])
+AOIPolygon.get_from_user = classmethod(lambda cls, title: AOIPolygon(dummy_poly, crs="EPSG:28992"))
+
+# Mock the download
+ProviderChain.fetch = lambda self, aoi, aoi_crs, output_path, sampling_radius=None: Path(output_path)
+```
+-->
+
+<!--pytest-codeblocks:cont-->
 ```python
 import logging
 
 from cloudfetch import AHN5, AHN6
-from cloudfetch.base import ProviderChain, AOIPolygon
+from cloudfetch.base import AOIPolygon, ProviderChain
 
 # Set up logging to track the download and PDAL processing
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] | %(name)s | %(message)s")
-
+logging.basicConfig(
+    level=logging.INFO, format="[%(levelname)s] | %(name)s | %(message)s"
+)
 
 def main():
     # 1. Prompt the user to draw an Area of Interest on an interactive map
@@ -95,14 +122,26 @@ def main():
         output_path="./data/my_output.copc.laz",
     )
 
+    print(f"Result saved to: {result_path}")
+
 
 if __name__ == "__main__":
     main()
 ```
 
+<!--pytest-codeblocks:cont-->
+<!--
+```python
+# Clean up the mocks so we don't break other tests
+AOIPolygon.get_from_user = original_get_from_user
+ProviderChain.fetch = original_fetch
+```
+-->
+
 ### Loading Geometries from Files
 If you already have a predefined shape (such as a GeoJSON file), you can bypass the UI and load the polygon directly:
 
+<!--pytest.mark.skip-->
 ```python
 aoi = AOIPolygon.get_from_file(Path("my_boundary.geojson"))
 ```
@@ -110,6 +149,7 @@ aoi = AOIPolygon.get_from_file(Path("my_boundary.geojson"))
 ### Adjusting Density
 You can dynamically thin the dataset to a specific minimum point spacing by supplying a `sampling_radius` float (in coordinate units) to the `fetch()` method:
 
+<!--pytest.mark.skip-->
 ```python
 # Apply a 2.0 coordinate unit radius for Poisson thinning
 provider.fetch(aoi=aoi.polygon, sampling_radius=2.0)

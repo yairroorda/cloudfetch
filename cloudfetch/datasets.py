@@ -99,7 +99,9 @@ class AHNProvider(PointCloudProvider):
         if index_gdf.crs != aoi_gdf.crs:
             index_gdf = index_gdf.to_crs(aoi_gdf.crs)
 
-        return gpd.sjoin(index_gdf, aoi_gdf[["geometry"]], how="inner", predicate="intersects")
+        return gpd.sjoin(
+            index_gdf, aoi_gdf[["geometry"]], how="inner", predicate="intersects"
+        )
 
 
 class AHN6(AHNProvider):
@@ -285,12 +287,18 @@ class CanElevation(PointCloudProvider):
             return None
         return int((lon + 180) // 6) + 1  # 60 UTM zones of 6 degrees each globally
 
-    def _resolve_record_crs(self, tile_name: str, url: str, longitude: float | None = None) -> str:
+    def _resolve_record_crs(
+        self, tile_name: str, url: str, longitude: float | None = None
+    ) -> str:
         # Gather potential zone integer sources in order of preference
         potential_zones = (
-            self._extract_utm_zone(tile_name or ""),  # try to extract zone from tile name
+            self._extract_utm_zone(
+                tile_name or ""
+            ),  # try to extract zone from tile name
             self._extract_utm_zone(url or ""),  # try to extract zone from URL
-            self._utm_zone_from_longitude(longitude) if longitude is not None else None,  # try to infer zone from longitude if available
+            self._utm_zone_from_longitude(longitude)
+            if longitude is not None
+            else None,  # try to infer zone from longitude if available
         )
 
         # Lazily get the first valid zone
@@ -303,7 +311,9 @@ class CanElevation(PointCloudProvider):
                 return epsg
 
         # If we can't resolve a specific projected CRS, log a warning and default to the master index CRS.
-        logger.warning(f"[{self.name}] Could not resolve CRS for record (tile_name='{tile_name}', url='{url}'). Defaulting to master index CRS {self.crs}.")
+        logger.warning(
+            f"[{self.name}] Could not resolve CRS for record (tile_name='{tile_name}', url='{url}'). Defaulting to master index CRS {self.crs}."
+        )
         return self.crs
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
@@ -311,7 +321,9 @@ class CanElevation(PointCloudProvider):
         aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
 
         logger.info(f"[{self.name}] Querying tile index for AOI...")
-        index_gdf = gpd.read_file(index_path, layer="index_lidartiles_tuileslidar", mask=aoi_for_join)
+        index_gdf = gpd.read_file(
+            index_path, layer="index_lidartiles_tuileslidar", mask=aoi_for_join
+        )
 
         # Match AOI CRS to the exact index CRS object to avoid false-positive
         # CRS mismatch warnings when equivalent definitions use different text.
@@ -321,7 +333,12 @@ class CanElevation(PointCloudProvider):
         # `mask` is a coarse pre-filter at IO level; apply exact geometry
         # intersection to remove occasional false positives.
         if not index_gdf.empty:
-            index_gdf = gpd.sjoin(index_gdf, aoi_for_join[["geometry"]], how="inner", predicate="intersects")
+            index_gdf = gpd.sjoin(
+                index_gdf,
+                aoi_for_join[["geometry"]],
+                how="inner",
+                predicate="intersects",
+            )
             index_gdf = index_gdf.drop(columns=["index_right"], errors="ignore")
         else:
             logger.warning(f"[{self.name}] No tiles found for this AOI.")
@@ -355,6 +372,9 @@ class CanElevation(PointCloudProvider):
             if row.geometry and not row.geometry.is_empty:
                 record_lon = float(row.geometry.centroid.x)
 
-            unique_records[url] = TileRecord(url=url, crs=self._resolve_record_crs(tile_name, url, longitude=record_lon))
+            unique_records[url] = TileRecord(
+                url=url,
+                crs=self._resolve_record_crs(tile_name, url, longitude=record_lon),
+            )
 
         return list(unique_records.values())

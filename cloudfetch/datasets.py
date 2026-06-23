@@ -29,7 +29,7 @@ class IGNLidarHD(PointCloudProvider):
     file_type = "COPC"
     wfs_url = "https://data.geopf.fr/wfs/ows?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature&TYPENAMES=IGNF_NUAGES-DE-POINTS-LIDAR-HD:dalle&OUTPUTFORMAT=application/json"
 
-    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
         # reproject AOI to match index CRS for accurate spatial querying
         if aoi_gdf.crs != self.crs:
             aoi_gdf = aoi_gdf.to_crs(self.crs)
@@ -44,25 +44,7 @@ class IGNLidarHD(PointCloudProvider):
             return []
 
         urls = list(dict.fromkeys(index_gdf["url"].dropna().tolist()))
-        rewritten_urls = [self._rewrite_to_ovh(url) for url in urls]
-        return [TileRecord(url=url, crs=self.crs) for url in rewritten_urls if url]
-
-    def _rewrite_to_ovh(self, url: str) -> str | None:
-        OVH_BASE_URL = "https://storage.sbg.cloud.ovh.net/v1/AUTH_63234f509d6048bca3c9fd7928720ca1/ppk-lidar/"
-        orig_filename = url.split("/")[-1]
-        match = re.search(r"LAMB93_([A-Z]{2})_", url)
-        subfolder = match.group(1) if match else ""
-
-        for letter in ["O", "C"]:
-            filename = orig_filename.replace("PTS_LAMB93", f"PTS_{letter}_LAMB93")
-            test_url = f"{OVH_BASE_URL}{subfolder}/{filename}"
-            try:
-                response = requests.head(test_url, timeout=5)
-                if response.status_code == 200:
-                    return test_url
-            except requests.RequestException:
-                continue
-        return None
+        return [TileRecord(url=url, crs=self.crs) for url in urls if url]
 
 
 class AHNProvider(PointCloudProvider):

@@ -122,7 +122,7 @@ class PointCloudProvider(ABC):
 
             if self.file_type == "COPC":
                 reader["polygon"] = aoi.wkt
-                reader["requests"] = 64
+                reader["requests"] = 1 if self.name == "IGN_LIDAR_HD" else 64
                 stages.append(reader)
                 merge_inputs.append(reader_tag)
             else:

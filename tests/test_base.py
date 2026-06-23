@@ -8,7 +8,7 @@ import geopandas as gpd
 import requests
 
 from cloudfetch.base import PointCloudProvider, TileRecord, make_map
-from cloudfetch.datasets import AHN5, AHN6, GeotilesAHN1, GeotilesAHN5
+from cloudfetch.datasets import AHN3, AHN5, AHN6, GeotilesAHN1, GeotilesAHN5
 
 
 class DummyProvider(PointCloudProvider):
@@ -417,7 +417,7 @@ def test_ghost_tile_omission_on_404(tmp_path, dummy_aoi_gdf, monkeypatch) -> Non
     mock_head = MagicMock(return_value=MagicMock(status_code=404))
     monkeypatch.setattr(requests, "head", mock_head)
 
-    ahn3 = AHN5(data_dir=tmp_path)
+    ahn3 = AHN3(data_dir=tmp_path)
     monkeypatch.setattr(ahn3, "_get_intersecting_hits", lambda x: fake_hits)
 
     # The get_index method should drop the tile and return an empty list

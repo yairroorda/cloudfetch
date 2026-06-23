@@ -7,7 +7,6 @@ from typing import List
 
 import geopandas as gpd
 import requests
-from pandas.core.arrays import base
 
 from cloudfetch.base import PointCloudProvider, TileRecord
 from cloudfetch.exceptions import ProviderFetchError

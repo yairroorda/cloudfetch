@@ -3,8 +3,8 @@ from pathlib import Path
 
 from shapely.geometry import Polygon as ShapelyPolygon  # type: ignore
 
-from cloudfetch import AHN5, AHN6, CanElevation, IGNLidarHD
 from cloudfetch.base import AOIPolygon, ProviderChain
+from cloudfetch.datasets import AHN5, AHN6, CanElevation, GeotilesAHN4, GeotilesAHN5, IGNLidarHD
 
 # make sure data directory exists
 data_dir = Path("./data")
@@ -37,6 +37,22 @@ def demo_AHN():
             logger.info(f"✅ Success! Successfully downloaded and processed {name} at: {result_path}")
         else:
             logger.error("❌ Failed to retrieve data from any source in the chain.")
+
+
+def demo_geotiles():
+    aoi_rdnew = AOIPolygon.get_from_user("Draw AOI for geotiles demo")
+    geotilesahn5 = GeotilesAHN5(data_dir="./data")
+    geotilesahn4 = GeotilesAHN4(data_dir="./data")
+    geotiles_chain = ProviderChain(providers=[geotilesahn5, geotilesahn4])
+    result_path = geotiles_chain.fetch(
+        aoi=aoi_rdnew.polygon,
+        aoi_crs=aoi_rdnew.crs,
+        output_path="./data/geotiles_ahn5.copc.laz",
+    )
+    if result_path:
+        logger.info(f"✅ Success! Successfully downloaded and processed geotiles at: {result_path}")
+    else:
+        logger.error("❌ Failed to retrieve data from any source in the chain.")
 
 
 def demo_sampling():
@@ -92,6 +108,7 @@ def demo_can_elevation():
 def main():
 
     demo_AHN()
+    demo_geotiles()
     demo_lidar_hd()
     demo_can_elevation()
     demo_sampling()

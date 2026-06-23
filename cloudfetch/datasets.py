@@ -7,6 +7,7 @@ from typing import List
 
 import geopandas as gpd
 import requests
+from pandas.core.arrays import base
 
 from cloudfetch.base import PointCloudProvider, TileRecord
 from cloudfetch.exceptions import ProviderFetchError
@@ -99,22 +100,19 @@ class AHNProvider(PointCloudProvider):
         if index_gdf.crs != aoi_gdf.crs:
             index_gdf = index_gdf.to_crs(aoi_gdf.crs)
 
-        return gpd.sjoin(
-            index_gdf, aoi_gdf[["geometry"]], how="inner", predicate="intersects"
-        )
+        return gpd.sjoin(index_gdf, aoi_gdf[["geometry"]], how="inner", predicate="intersects")
 
 
-class AHN6(AHNProvider):
-    """Provider for AHN6 COPC tiles."""
+class _OfficialAHNBase(AHNProvider):
+    """Base class for official AHN COPC tiles."""
 
-    name = "AHN6"
     file_type = "COPC"
     index_url = "https://basisdata.nl/hwh-ahn/AUX/bladwijzer_AHN6.gpkg"
     index_cache_name = "index_waterschapshuis"
-    layer = "bladindeling"
-    base_url = "https://fsn1.your-objectstorage.com/hwh-ahn/AHN6/01_LAZ/"
+    layer = "bladindeling_aoi"
+    version: int
 
-    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
         """AHN6 tiles are named by their lower-left corner coordinates, so we query the index for intersecting tiles and construct URLs directly.
 
         Parameters
@@ -124,7 +122,7 @@ class AHN6(AHNProvider):
 
         Returns
         -------
-        List[str]
+        List[TileRecord]
             List of tile URLs intersecting the AOI.
 
         """
@@ -132,19 +130,56 @@ class AHN6(AHNProvider):
         if hits.empty:
             return []
 
-        records = []
+        records: dict[str, TileRecord] = {}
         for _, row in hits.iterrows():
             x = str(int(row["left"])).zfill(6)
             y = str(int(row["bottom"])).zfill(6)
-            url = f"{self.base_url}AHN6_2025_C_{x}_{y}.COPC.LAZ"
-            # Hardcode self.crs since the whole country is EPSG:28992
-            records.append(TileRecord(url=url, crs=self.crs))
+            # Dynamically build the URL via basisdata.nl proxy
+            if self.version == 6:
+                url = f"https://basisdata.nl/hwh-ahn/AHN6/01_LAZ/AHN6_2025_C_{x}_{y}.COPC.LAZ"
+            else:
+                url = f"https://basisdata.nl/hwh-ahn/AHN{self.version}_KM/01_LAZ/AHN{self.version}_C_{x}_{y}.COPC.LAZ"
 
-        return records
+            # Validate that the tile actually exists on the server before passing to PDAL
+            if url not in records:
+                try:
+                    # Allow redirects since basisdata proxies to object storage
+                    if requests.head(url, timeout=5, allow_redirects=True).status_code == 200:
+                        records[url] = TileRecord(url=url, crs=self.crs)
+                except requests.RequestException:
+                    pass
+
+        return list(records.values())
 
 
-class AHNArchive(AHNProvider):
-    """Base class for AHN 1-5 archive datasets.
+# Official AHN COPC (Uncolored)
+class AHN6(_OfficialAHNBase):
+    name = "AHN6"
+    version = 6
+
+
+class AHN5(_OfficialAHNBase):
+    name = "AHN5"
+    version = 5
+
+
+class AHN4(_OfficialAHNBase):
+    name = "AHN4"
+    version = 4
+
+
+class AHN3(_OfficialAHNBase):
+    name = "AHN3"
+    version = 3
+
+
+class AHN2(_OfficialAHNBase):
+    name = "AHN2"
+    version = 2
+
+
+class _GeotilesAHNBase(AHNProvider):
+    """Base class for Geotiles RGBO datasets.
 
     Parameters
     ----------
@@ -157,13 +192,9 @@ class AHNArchive(AHNProvider):
     index_url = "https://static.fwrite.org/2022/01/index_sheets.gpkg_.zip"
     index_cache_name = "index_geotiles"
     layer = "AHN_subunits"
+    version: int
 
-    def __init__(self, version: int, **kwargs):
-        super().__init__(**kwargs)
-        self.name = f"AHN{version}"
-        self.base_url = f"https://geotiles.citg.tudelft.nl/AHN{version}_T"
-
-    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[str]:
+    def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
         """AHN 1-5 archive tiles are indexed by their GT_AHNSUB sheet name, which we can use to construct LAZ URLs directly.
 
         Parameters
@@ -173,7 +204,7 @@ class AHNArchive(AHNProvider):
 
         Returns
         -------
-        List[str]
+        List[TileRecord]
             List of tile URLs intersecting the AOI.
 
         """
@@ -182,8 +213,9 @@ class AHNArchive(AHNProvider):
             return []
 
         valid_urls = []
+        base_url = f"https://geotiles.citg.tudelft.nl/AHN{self.version}_T"
         for tile in dict.fromkeys(hits["GT_AHNSUB"]):
-            url = f"{self.base_url}/{tile}.LAZ"
+            url = f"{base_url}/{tile}.LAZ"
             try:
                 # Protect PDAL from crashing on HTML 404 pages
                 if requests.head(url, timeout=5).status_code == 200:
@@ -194,40 +226,30 @@ class AHNArchive(AHNProvider):
         return [TileRecord(url=url, crs=self.crs) for url in valid_urls]
 
 
-# Expose clean wrappers for the user
-class AHN5(AHNArchive):
-    """Provider for AHN5 archive tiles."""
-
-    def __init__(self, **kwargs):
-        super().__init__(version=5, **kwargs)
+# Geotiles AHN LAZ (RGBI Colored)
+class GeotilesAHN5(_GeotilesAHNBase):
+    name = "Geotiles_AHN5_RGBI"
+    version = 5
 
 
-class AHN4(AHNArchive):
-    """Provider for AHN4 archive tiles."""
-
-    def __init__(self, **kwargs):
-        super().__init__(version=4, **kwargs)
+class GeotilesAHN4(_GeotilesAHNBase):
+    name = "Geotiles_AHN4_RGBI"
+    version = 4
 
 
-class AHN3(AHNArchive):
-    """Provider for AHN3 archive tiles."""
-
-    def __init__(self, **kwargs):
-        super().__init__(version=3, **kwargs)
+class GeotilesAHN3(_GeotilesAHNBase):
+    name = "Geotiles_AHN3_RGBI"
+    version = 3
 
 
-class AHN2(AHNArchive):
-    """Provider for AHN2 archive tiles."""
-
-    def __init__(self, **kwargs):
-        super().__init__(version=2, **kwargs)
+class GeotilesAHN2(_GeotilesAHNBase):
+    name = "Geotiles_AHN2_RGBI"
+    version = 2
 
 
-class AHN1(AHNArchive):
-    """Provider for AHN1 archive tiles."""
-
-    def __init__(self, **kwargs):
-        super().__init__(version=1, **kwargs)
+class GeotilesAHN1(_GeotilesAHNBase):
+    name = "Geotiles_AHN1_RGBI"
+    version = 1
 
 
 class CanElevation(PointCloudProvider):
@@ -287,18 +309,12 @@ class CanElevation(PointCloudProvider):
             return None
         return int((lon + 180) // 6) + 1  # 60 UTM zones of 6 degrees each globally
 
-    def _resolve_record_crs(
-        self, tile_name: str, url: str, longitude: float | None = None
-    ) -> str:
+    def _resolve_record_crs(self, tile_name: str, url: str, longitude: float | None = None) -> str:
         # Gather potential zone integer sources in order of preference
         potential_zones = (
-            self._extract_utm_zone(
-                tile_name or ""
-            ),  # try to extract zone from tile name
+            self._extract_utm_zone(tile_name or ""),  # try to extract zone from tile name
             self._extract_utm_zone(url or ""),  # try to extract zone from URL
-            self._utm_zone_from_longitude(longitude)
-            if longitude is not None
-            else None,  # try to infer zone from longitude if available
+            self._utm_zone_from_longitude(longitude) if longitude is not None else None,  # try to infer zone from longitude if available
         )
 
         # Lazily get the first valid zone
@@ -311,9 +327,7 @@ class CanElevation(PointCloudProvider):
                 return epsg
 
         # If we can't resolve a specific projected CRS, log a warning and default to the master index CRS.
-        logger.warning(
-            f"[{self.name}] Could not resolve CRS for record (tile_name='{tile_name}', url='{url}'). Defaulting to master index CRS {self.crs}."
-        )
+        logger.warning(f"[{self.name}] Could not resolve CRS for record (tile_name='{tile_name}', url='{url}'). Defaulting to master index CRS {self.crs}.")
         return self.crs
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
@@ -321,9 +335,7 @@ class CanElevation(PointCloudProvider):
         aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
 
         logger.info(f"[{self.name}] Querying tile index for AOI...")
-        index_gdf = gpd.read_file(
-            index_path, layer="index_lidartiles_tuileslidar", mask=aoi_for_join
-        )
+        index_gdf = gpd.read_file(index_path, layer="index_lidartiles_tuileslidar", mask=aoi_for_join)
 
         # Match AOI CRS to the exact index CRS object to avoid false-positive
         # CRS mismatch warnings when equivalent definitions use different text.

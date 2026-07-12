@@ -134,9 +134,8 @@ def get_spatial_intersections(index_path: Path, aoi_gdf: gpd.GeoDataFrame, layer
 
 class IGNLidarHD(PointCloudProvider):
     """Provider for IGN LiDAR HD tiles in France.
-
-    The provider queries the public WFS index and rewrites tile URLs to the
-    OVH object storage mirror used for downloads.
+    The provider queries the public Géoplateforme WFS API
+    and uses the official data.geopf.fr download endpoints.
     """
 
     name = "IGN_LIDAR_HD"

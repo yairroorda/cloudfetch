@@ -7,9 +7,7 @@ from cloudfetch.datasets import CanElevation
 
 def test_can_elevation_get_index_extracts_urls(dummy_aoi_gdf, tmp_path: Path, monkeypatch) -> None:
     provider = CanElevation(data_dir=tmp_path)
-
-    monkeypatch.setattr(provider, "_download_index", lambda: tmp_path / "nrcan_tile_index.gpkg")
-
+    monkeypatch.setattr("cloudfetch.datasets.get_index", lambda *args, **kwargs: tmp_path / "nrcan_tile_index.gpkg")
     fake_index = gpd.GeoDataFrame(
         {
             "URL": ["https://fake.laz", "https://fake2.laz"],

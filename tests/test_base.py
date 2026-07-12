@@ -365,7 +365,7 @@ def test_official_ahn_url_generation(tmp_path, dummy_aoi_gdf, monkeypatch) -> No
 
     # 1. Test AHN6 (Special case: has "2025" and slightly different base URL)
     ahn6 = AHN6(data_dir=tmp_path)
-    monkeypatch.setattr(ahn6, "_get_intersecting_hits", lambda x: fake_hits)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
     records_6 = ahn6.get_index(dummy_aoi_gdf)
 
     assert len(records_6) == 1
@@ -373,7 +373,7 @@ def test_official_ahn_url_generation(tmp_path, dummy_aoi_gdf, monkeypatch) -> No
 
     # 2. Test AHN5 (Standard case for AHN 2-5)
     ahn5 = AHN5(data_dir=tmp_path)
-    monkeypatch.setattr(ahn5, "_get_intersecting_hits", lambda x: fake_hits)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
     records_5 = ahn5.get_index(dummy_aoi_gdf)
 
     assert len(records_5) == 1
@@ -391,7 +391,7 @@ def test_geotiles_ahn_url_generation_and_deduplication(tmp_path, dummy_aoi_gdf, 
 
     # 1. Test Geotiles AHN5
     gt5 = GeotilesAHN5(data_dir=tmp_path)
-    monkeypatch.setattr(gt5, "_get_intersecting_hits", lambda x: fake_hits)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
     records_5 = gt5.get_index(dummy_aoi_gdf)
 
     # Assert deduplication worked (3 hits -> 2 records)
@@ -402,7 +402,7 @@ def test_geotiles_ahn_url_generation_and_deduplication(tmp_path, dummy_aoi_gdf, 
 
     # 2. Test Geotiles AHN1 to ensure the version dynamically formats
     gt1 = GeotilesAHN1(data_dir=tmp_path)
-    monkeypatch.setattr(gt1, "_get_intersecting_hits", lambda x: fake_hits)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
     records_1 = gt1.get_index(dummy_aoi_gdf)
 
     assert "https://geotiles.citg.tudelft.nl/AHN1_T/37EN2.LAZ" in [r.url for r in records_1]
@@ -418,7 +418,7 @@ def test_ghost_tile_omission_on_404(tmp_path, dummy_aoi_gdf, monkeypatch) -> Non
     monkeypatch.setattr(requests, "head", mock_head)
 
     ahn3 = AHN3(data_dir=tmp_path)
-    monkeypatch.setattr(ahn3, "_get_intersecting_hits", lambda x: fake_hits)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
 
     # The get_index method should drop the tile and return an empty list
     records = ahn3.get_index(dummy_aoi_gdf)

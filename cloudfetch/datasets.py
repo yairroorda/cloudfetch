@@ -1,6 +1,5 @@
 import logging
 import re
-import urllib.request
 import zipfile
 from pathlib import Path
 from typing import List
@@ -10,10 +9,127 @@ import requests
 
 from cloudfetch.base import PointCloudProvider, TileRecord
 from cloudfetch.exceptions import ProviderFetchError
-from cloudfetch.utils import download_file
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+
+def download_file(url: str, dest_path: Path, timeout: int = 15, chunk_size: int = 8192) -> Path:
+    """
+    Downloads a file safely using streaming to prevent memory overload.
+    Cleans up the destination file if the download fails or is interrupted.
+
+    Parameters
+    ----------
+    url : str
+        URL of the file to download.
+    dest_path : Path
+        Path to save the downloaded file.
+    timeout : int, optional
+        Timeout for the download request.
+    chunk_size : int, optional
+        Size of the chunks to download.
+
+    Returns
+    -------
+    Path
+        Path to the downloaded file.
+
+    """
+    try:
+        # stream=True ensures we don't load 300MB GPKG files into RAM
+        with requests.get(url, stream=True, timeout=timeout) as response:
+            response.raise_for_status()  # Fails immediately on 404, 500, etc.
+
+            with open(dest_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=chunk_size):
+                    if chunk:
+                        f.write(chunk)
+
+        return dest_path
+
+    except requests.exceptions.RequestException as exc:
+        # Delete the file if it partially downloaded before the connection died
+        if dest_path.exists():
+            dest_path.unlink()
+
+        raise ProviderFetchError("Network", f"Failed to download {url}: {exc}") from exc
+
+
+def get_index(provider_name: str, index_dir: Path, index_url: str, index_cache_name: str) -> Path:
+    """Downloads and caches a GPKG index file, extracting it from a ZIP if necessary.
+
+    Parameters
+    ----------
+    provider_name : str
+        Name of the provider.
+    index_dir : Path
+        Directory to cache the index file.
+    index_url : str
+        URL of the index file.
+    index_cache_name : str
+        Name of the cached index file.
+
+    Returns
+    -------
+    Path
+        Path to the local GPKG index file.
+    """
+    local_path = index_dir / f"{index_cache_name}.gpkg"
+
+    if not local_path.exists():
+        logger.info(f"[{provider_name}] Downloading index: {index_cache_name}...")
+        if index_url.endswith(".zip"):
+            tmp_zip = index_dir / "tmp_index.zip"
+            download_file(index_url, tmp_zip)  # Use your robust utility!
+            with zipfile.ZipFile(tmp_zip) as zf:
+                gpkg_name = next(n for n in zf.namelist() if n.endswith(".gpkg"))
+                local_path.write_bytes(zf.read(gpkg_name))
+            tmp_zip.unlink()
+        else:
+            download_file(index_url, local_path)
+
+    return local_path
+
+
+def get_spatial_intersections(index_path: Path, aoi_gdf: gpd.GeoDataFrame, layer: str | None = None) -> gpd.GeoDataFrame:
+    """Loads an index and performs a spatial intersection against an AOI.
+
+    Parameters
+    ----------
+    index_path : Path
+        Path to the index file.
+    aoi_gdf : gpd.GeoDataFrame
+        GeoDataFrame representing the AOI.
+    layer : str, optional
+        Optional layer name to filter the index.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+        GeoDataFrame of intersecting tiles.
+    """
+    target_crs = aoi_gdf.crs
+    if not target_crs:
+        raise ValueError("The provided AOI GeoDataFrame must have a valid CRS assigned.")
+
+    index_gdf = gpd.read_file(
+        index_path,
+        layer=layer if layer else None,  # permissive for files with any number of layers
+        mask=aoi_gdf,
+    )
+
+    if index_gdf.crs != target_crs:
+        index_gdf = index_gdf.to_crs(target_crs)
+
+    aoi_geom = gpd.GeoDataFrame(geometry=aoi_gdf.geometry, crs=target_crs)  # isolate geometry to avoid polluting columns
+
+    joined_gdf = gpd.sjoin(index_gdf, aoi_geom, how="inner", predicate="intersects")
+
+    if "index_right" in joined_gdf.columns:  # don't crash on empty intersection
+        joined_gdf.drop(columns=["index_right"], inplace=True)
+
+    return joined_gdf
 
 
 class IGNLidarHD(PointCloudProvider):
@@ -46,47 +162,10 @@ class IGNLidarHD(PointCloudProvider):
         return [TileRecord(url=url, crs=self.crs) for url in urls if url]
 
 
-class AHNProvider(PointCloudProvider):
-    """Base class for Dutch AHN datasets backed by a GPKG tile index.
-
-    Subclasses define the dataset-specific index location and tile naming
-    scheme.
-    """
-
-    index_url: str
-    index_cache_name: str
-    layer: str
-    crs = "EPSG:28992"
-
-    def _download_index(self) -> Path:
-        local_path = self.index_dir / f"{self.index_cache_name}.gpkg"
-        if not local_path.exists():
-            logger.info(f"Downloading index: {self.index_cache_name}...")
-            if self.index_url.endswith(".zip"):
-                tmp_zip = self.index_dir / "tmp_index.zip"
-                urllib.request.urlretrieve(self.index_url, tmp_zip)
-                with zipfile.ZipFile(tmp_zip) as zf:
-                    gpkg_name = next(n for n in zf.namelist() if n.endswith(".gpkg"))
-                    local_path.write_bytes(zf.read(gpkg_name))
-                tmp_zip.unlink()
-            else:
-                urllib.request.urlretrieve(self.index_url, local_path)
-        return local_path
-
-    def _get_intersecting_hits(self, aoi_gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-        index_path = self._download_index()
-        kwargs = {"layer": self.layer} if self.layer else {}
-        index_gdf = gpd.read_file(index_path, **kwargs)
-
-        if index_gdf.crs != aoi_gdf.crs:
-            index_gdf = index_gdf.to_crs(aoi_gdf.crs)
-
-        return gpd.sjoin(index_gdf, aoi_gdf[["geometry"]], how="inner", predicate="intersects")
-
-
-class _OfficialAHNBase(AHNProvider):
+class OfficialAHNBase(PointCloudProvider):
     """Base class for official AHN COPC tiles."""
 
+    crs = "EPSG:28992"
     file_type = "COPC"
     index_url = "https://basisdata.nl/hwh-ahn/AUX/bladwijzer_AHN6.gpkg"
     index_cache_name = "index_waterschapshuis"
@@ -94,7 +173,7 @@ class _OfficialAHNBase(AHNProvider):
     version: int
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
-        """AHN6 tiles are named by their lower-left corner coordinates, so we query the index for intersecting tiles and construct URLs directly.
+        """AHN 1x1 km tiles are named by their lower-left corner coordinates, so we query the index for intersecting tiles and construct URLs directly.
 
         Parameters
         ----------
@@ -107,14 +186,18 @@ class _OfficialAHNBase(AHNProvider):
             List of tile URLs intersecting the AOI.
 
         """
-        hits = self._get_intersecting_hits(aoi_gdf)
+        index_path = get_index(provider_name=self.name, index_dir=self.index_dir, index_url=self.index_url, index_cache_name=self.index_cache_name,)
+
+        hits = get_spatial_intersections(index_path=index_path, aoi_gdf=aoi_gdf, layer=self.layer)
+
         if hits.empty:
             return []
 
         records: dict[str, TileRecord] = {}
-        for _, row in hits.iterrows():
-            x = str(int(row["left"])).zfill(6)
-            y = str(int(row["bottom"])).zfill(6)
+        for row in hits.itertuples():
+            x = str(row.left).zfill(6)  # type: ignore
+            y = str(row.bottom).zfill(6)  # type: ignore
+
             # Dynamically build the URL via basisdata.nl proxy
             if self.version == 6:
                 url = f"https://basisdata.nl/hwh-ahn/AHN6/01_LAZ/AHN6_2025_C_{x}_{y}.COPC.LAZ"
@@ -134,41 +217,35 @@ class _OfficialAHNBase(AHNProvider):
 
 
 # Official AHN COPC (Uncolored)
-class AHN6(_OfficialAHNBase):
+class AHN6(OfficialAHNBase):
     name = "AHN6"
     version = 6
 
 
-class AHN5(_OfficialAHNBase):
+class AHN5(OfficialAHNBase):
     name = "AHN5"
     version = 5
 
 
-class AHN4(_OfficialAHNBase):
+class AHN4(OfficialAHNBase):
     name = "AHN4"
     version = 4
 
 
-class AHN3(_OfficialAHNBase):
+class AHN3(OfficialAHNBase):
     name = "AHN3"
     version = 3
 
 
-class AHN2(_OfficialAHNBase):
+class AHN2(OfficialAHNBase):
     name = "AHN2"
     version = 2
 
 
-class _GeotilesAHNBase(AHNProvider):
-    """Base class for Geotiles RGBO datasets.
+class GeotilesAHNBase(PointCloudProvider):
+    """Base class for Geotiles RGBI datasets."""
 
-    Parameters
-    ----------
-    version : int
-        AHN archive version number used to build the dataset name and base
-        URL.
-    """
-
+    crs = "EPSG:28992"
     file_type = "LAS"
     index_url = "https://static.fwrite.org/2022/01/index_sheets.gpkg_.zip"
     index_cache_name = "index_geotiles"
@@ -189,7 +266,15 @@ class _GeotilesAHNBase(AHNProvider):
             List of tile URLs intersecting the AOI.
 
         """
-        hits = self._get_intersecting_hits(aoi_gdf)
+        index_path = get_index(
+            provider_name=self.name,
+            index_dir=self.index_dir,
+            index_url=self.index_url,
+            index_cache_name=self.index_cache_name,
+        )
+
+        hits = get_spatial_intersections(index_path=index_path, aoi_gdf=aoi_gdf, layer=self.layer)
+
         if hits.empty:
             return []
 
@@ -208,27 +293,27 @@ class _GeotilesAHNBase(AHNProvider):
 
 
 # Geotiles AHN LAZ (RGBI Colored)
-class GeotilesAHN5(_GeotilesAHNBase):
+class GeotilesAHN5(GeotilesAHNBase):
     name = "Geotiles_AHN5_RGBI"
     version = 5
 
 
-class GeotilesAHN4(_GeotilesAHNBase):
+class GeotilesAHN4(GeotilesAHNBase):
     name = "Geotiles_AHN4_RGBI"
     version = 4
 
 
-class GeotilesAHN3(_GeotilesAHNBase):
+class GeotilesAHN3(GeotilesAHNBase):
     name = "Geotiles_AHN3_RGBI"
     version = 3
 
 
-class GeotilesAHN2(_GeotilesAHNBase):
+class GeotilesAHN2(GeotilesAHNBase):
     name = "Geotiles_AHN2_RGBI"
     version = 2
 
 
-class GeotilesAHN1(_GeotilesAHNBase):
+class GeotilesAHN1(GeotilesAHNBase):
     name = "Geotiles_AHN1_RGBI"
     version = 1
 
@@ -247,16 +332,6 @@ class CanElevation(PointCloudProvider):
     file_type = "COPC"
     index_url = "https://canelevation-lidar-point-clouds.s3-ca-central-1.amazonaws.com/pointclouds_nuagespoints/Index_LiDARtiles_tuileslidar.gpkg"
     _utm_epsg_map: dict[int, str] | None = None
-
-    def _download_index(self) -> Path:
-        """Downloads the master tile index."""
-        local_path = self.index_dir / "nrcan_tile_index.gpkg"
-
-        if not local_path.exists():
-            logger.info(f"[{self.name}] Downloading master TILE index...")
-            download_file(self.index_url, local_path)
-
-        return local_path
 
     @staticmethod
     def _build_nad83_csrs_utm_epsg_map() -> dict[int, str]:
@@ -312,7 +387,13 @@ class CanElevation(PointCloudProvider):
         return self.crs
 
     def get_index(self, aoi_gdf: gpd.GeoDataFrame) -> List[TileRecord]:
-        index_path = self._download_index()
+        index_path = get_index(
+            provider_name=self.name,
+            index_dir=self.index_dir,
+            index_url=self.index_url,
+            index_cache_name="nrcan_tile_index",
+        )
+
         aoi_for_join = aoi_gdf.to_crs("EPSG:4617")
 
         logger.info(f"[{self.name}] Querying tile index for AOI...")
@@ -328,7 +409,7 @@ class CanElevation(PointCloudProvider):
         if not index_gdf.empty:
             index_gdf = gpd.sjoin(
                 index_gdf,
-                aoi_for_join[["geometry"]],
+                aoi_for_join[["geometry"]],  # type: ignore
                 how="inner",
                 predicate="intersects",
             )

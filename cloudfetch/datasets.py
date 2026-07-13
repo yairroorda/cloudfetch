@@ -80,12 +80,17 @@ def get_index(provider_name: str, index_dir: Path, index_url: str, index_cache_n
     if not local_path.exists():
         logger.info(f"[{provider_name}] Downloading index: {index_cache_name}...")
         if index_url.endswith(".zip"):
-            tmp_zip = index_dir / "tmp_index.zip"
-            download_file(index_url, tmp_zip)  # Use your robust utility!
-            with zipfile.ZipFile(tmp_zip) as zf:
-                gpkg_name = next(n for n in zf.namelist() if n.endswith(".gpkg"))
-                local_path.write_bytes(zf.read(gpkg_name))
-            tmp_zip.unlink()
+            tmp_zip = index_dir / f"{index_cache_name}.tmp.zip"
+            try:
+                download_file(index_url, tmp_zip)
+                with zipfile.ZipFile(tmp_zip) as zf:
+                    gpkg_name = next((n for n in zf.namelist() if n.endswith(".gpkg")), None)
+                    if not gpkg_name:
+                        raise ProviderFetchError(provider_name, f"Index archive {index_url} contains no .gpkg file.")
+                    local_path.write_bytes(zf.read(gpkg_name))
+            finally:
+                if tmp_zip.exists():
+                    tmp_zip.unlink()
         else:
             download_file(index_url, local_path)
 

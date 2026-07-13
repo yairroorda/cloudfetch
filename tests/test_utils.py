@@ -4,8 +4,8 @@ import pytest
 import requests
 import responses
 
+from cloudfetch.datasets import download_file
 from cloudfetch.exceptions import ProviderFetchError
-from cloudfetch.utils import download_file
 
 
 @responses.activate
@@ -34,7 +34,9 @@ def test_download_file_404_raises_provider_fetch_error(tmp_path: Path) -> None:
 
 
 @responses.activate
-def test_download_file_connection_interruption_deletes_partial_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_download_file_connection_interruption_deletes_partial_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     url = "https://example.test/interrupted.gpkg"
     dest = tmp_path / "interrupted.gpkg"
     dest.write_bytes(b"partial")

@@ -160,7 +160,9 @@ provider.fetch(aoi=aoi.polygon, sampling_radius=2.0)
 
 The library currently supports the following dataset providers out of the box:
 
--  **Netherlands:** `AHN1`, `AHN2`, `AHN3`, `AHN4`, `AHN5`, `AHN6`.
+- **Netherlands:**
+  - `AHN versions 2-6` from https://www.ahn.nl/
+  - `AHN versions 1-5` (including color) from https://geotiles.citg.tudelft.nl
 - **France:** `IGNLidarHD`.
 - **Canada:** `CanElevation`
 

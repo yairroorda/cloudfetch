@@ -42,3 +42,8 @@ nav:
     - AHN: datasets/ahn.md
     - IGNLidarHD: datasets/ignlidarhd.md
     - CanElevation: datasets/canelevation.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences

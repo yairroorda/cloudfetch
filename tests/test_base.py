@@ -2,9 +2,13 @@ import json
 import sys
 import types
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import geopandas as gpd
+import requests
 
 from cloudfetch.base import PointCloudProvider, TileRecord, make_map
+from cloudfetch.datasets import AHN3, AHN5, AHN6, GeotilesAHN1, GeotilesAHN5
 
 
 class DummyProvider(PointCloudProvider):
@@ -347,3 +351,76 @@ def test_aoi_polygon_get_from_user_validates_point_count(monkeypatch, mock_tkint
         assert False, "Expected ValueError but none was raised"
     except ValueError as exc:
         assert "requires at least 3 points" in str(exc)
+
+
+def test_official_ahn_url_generation(tmp_path, dummy_aoi_gdf, monkeypatch) -> None:
+    """Verifies that Official AHN classes construct the exact URLs specified by the AHN team."""
+
+    # Mock the spatial join to pretend we hit a 1x1km grid cell
+    fake_hits = gpd.GeoDataFrame({"left": [171000], "bottom": [438000]})
+
+    # Mock the HTTP HEAD request to simulate that the file exists on the server (200 OK)
+    mock_head = MagicMock(return_value=MagicMock(status_code=200))
+    monkeypatch.setattr(requests, "head", mock_head)
+
+    # 1. Test AHN6 (Special case: has "2025" and slightly different base URL)
+    ahn6 = AHN6(data_dir=tmp_path)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
+    records_6 = ahn6.get_index(dummy_aoi_gdf)
+
+    assert len(records_6) == 1
+    assert records_6[0].url == "https://basisdata.nl/hwh-ahn/AHN6/01_LAZ/AHN6_2025_C_171000_438000.COPC.LAZ"
+
+    # 2. Test AHN5 (Standard case for AHN 2-5)
+    ahn5 = AHN5(data_dir=tmp_path)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
+    records_5 = ahn5.get_index(dummy_aoi_gdf)
+
+    assert len(records_5) == 1
+    assert records_5[0].url == "https://basisdata.nl/hwh-ahn/AHN5_KM/01_LAZ/AHN5_C_171000_438000.COPC.LAZ"
+
+
+def test_geotiles_ahn_url_generation_and_deduplication(tmp_path, dummy_aoi_gdf, monkeypatch) -> None:
+    """Verifies Geotiles classes construct correct URLs and deduplicate sheet names."""
+
+    # Mock the spatial join to return map sheets (including a duplicate to test dedup)
+    fake_hits = gpd.GeoDataFrame({"GT_AHNSUB": ["37EN2", "37EN2", "38W"]})
+
+    mock_head = MagicMock(return_value=MagicMock(status_code=200))
+    monkeypatch.setattr(requests, "head", mock_head)
+
+    # 1. Test Geotiles AHN5
+    gt5 = GeotilesAHN5(data_dir=tmp_path)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
+    records_5 = gt5.get_index(dummy_aoi_gdf)
+
+    # Assert deduplication worked (3 hits -> 2 records)
+    urls_5 = [r.url for r in records_5]
+    assert len(urls_5) == 2
+    assert "https://geotiles.citg.tudelft.nl/AHN5_T/37EN2.LAZ" in urls_5
+    assert "https://geotiles.citg.tudelft.nl/AHN5_T/38W.LAZ" in urls_5
+
+    # 2. Test Geotiles AHN1 to ensure the version dynamically formats
+    gt1 = GeotilesAHN1(data_dir=tmp_path)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
+    records_1 = gt1.get_index(dummy_aoi_gdf)
+
+    assert "https://geotiles.citg.tudelft.nl/AHN1_T/37EN2.LAZ" in [r.url for r in records_1]
+
+
+def test_ghost_tile_omission_on_404(tmp_path, dummy_aoi_gdf, monkeypatch) -> None:
+    """Verifies that tiles returning 404/403 are safely dropped from the index."""
+
+    fake_hits = gpd.GeoDataFrame({"left": [171000], "bottom": [438000]})
+
+    # Mock the HTTP HEAD request to simulate a Ghost Tile (404 Not Found)
+    mock_head = MagicMock(return_value=MagicMock(status_code=404))
+    monkeypatch.setattr(requests, "head", mock_head)
+
+    ahn3 = AHN3(data_dir=tmp_path)
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: fake_hits)
+
+    # The get_index method should drop the tile and return an empty list
+    records = ahn3.get_index(dummy_aoi_gdf)
+
+    assert len(records) == 0

@@ -199,8 +199,8 @@ class OfficialAHNBase(PointCloudProvider):
 
         records: dict[str, TileRecord] = {}
         for row in hits.itertuples():
-            x = str(row.left).zfill(6)  # type: ignore
-            y = str(row.bottom).zfill(6)  # type: ignore
+            x = str(int(round(row.left))).zfill(6)  # type: ignore
+            y = str(int(round(row.bottom))).zfill(6)  # type: ignore
 
             # Dynamically build the URL via basisdata.nl proxy
             if self.version == 6:

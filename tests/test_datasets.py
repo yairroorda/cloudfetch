@@ -1,8 +1,20 @@
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 
-from cloudfetch.datasets import CanElevation
+from cloudfetch.datasets import CanElevation, OfficialAHNBase
+
+
+class DummyAHNProvider(OfficialAHNBase):
+    """Concrete subclass of OfficialAHNBase for testing URL generation."""
+
+    name = "ahn5"
+    version = 5
+    layer = "01_LAZ"
+    index_dir = ""
+    index_url = ""
+    index_cache_name = ""
 
 
 def test_can_elevation_get_index_extracts_urls(dummy_aoi_gdf, tmp_path: Path, monkeypatch) -> None:
@@ -48,3 +60,24 @@ def test_can_elevation_resolve_record_crs_from_longitude_fallback(tmp_path: Path
     # The tile name doesn't contain UTM zone info, so it should fall back to longitude-based CRS resolution.
     # Given the longitude of -113.49, it should resolve to UTM zone 12N, which corresponds to EPSG:2956.
     assert crs == "EPSG:2956"
+
+
+def test_ahn_tile_url_integer_coordinates(dummy_aoi_gdf, monkeypatch) -> None:
+    """Test that AHN tile URL coordinates are formatted as integers without trailing .0 floats."""
+    monkeypatch.setattr("cloudfetch.datasets.get_index", lambda *args, **kwargs: "dummy_path")
+
+    # Simulate a pandas row where coordinates come through as floats (e.g., 168000.0, 427000.0)
+    mock_hits = pd.DataFrame({
+        "left": [168000.0],
+        "bottom": [427000.0],
+    })
+    monkeypatch.setattr("cloudfetch.datasets.get_spatial_intersections", lambda *args, **kwargs: mock_hits)
+
+    provider = DummyAHNProvider()
+    records = provider.get_index(dummy_aoi_gdf)
+
+    assert len(records) == 1
+    expected_url = "https://basisdata.nl/hwh-ahn/AHN5_KM/01_LAZ/AHN5_C_168000_427000.COPC.LAZ"
+
+    assert records[0].url == expected_url
+    assert ".0_" not in records[0].url

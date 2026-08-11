@@ -39,7 +39,7 @@ pytest-codeblocks = ">=0.17.0,<0.18"
 default = []
 dev = ["dev"]
 
-[tasks]
+[feature.dev.tasks]
 test = "pytest --codeblocks"
 lint = "ruff check ."
 build-dist = "python -m build"

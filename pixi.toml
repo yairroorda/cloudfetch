@@ -46,3 +46,6 @@ build-dist = "python -m build"
 check-dist = "python -m twine check dist/*"
 publish-testpypi = "python -m twine upload --repository testpypi dist/*"
 publish-pypi = "python -m twine upload dist/*"
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning:geocoder.*"]

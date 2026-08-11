@@ -199,8 +199,10 @@ class OfficialAHNBase(PointCloudProvider):
 
         records: dict[str, TileRecord] = {}
         for row in hits.itertuples():
-            x = str(int(round(row.left))).zfill(6)  # type: ignore
-            y = str(int(round(row.bottom))).zfill(6)  # type: ignore
+            # While Python's round() normally returns an int, calling it on a NumPy float 
+            # returns a float (e.g. 123456.0). The int() cast strips the trailing .0
+            x = str(int(round(row.left))).zfill(6)  # noqa: RUF046
+            y = str(int(round(row.bottom))).zfill(6)  # noqa: RUF046
 
             # Dynamically build the URL via basisdata.nl proxy
             if self.version == 6:
